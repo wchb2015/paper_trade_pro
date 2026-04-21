@@ -116,5 +116,14 @@ io.on('connection', (socket) => {
 });
 
 const PORT = Number(process.env.PORT) || 4000;
+// --- Debug: log latest TSLA price every 5 seconds ---
+setInterval(() => {
+  const tsla = latestPrices['TSLA'];
+  if (tsla) {
+    console.log(`[${new Date().toLocaleTimeString()}] TSLA: $${tsla.price.toFixed(2)} (trade at ${tsla.ts})`);
+  } else {
+    console.log(`[${new Date().toLocaleTimeString()}] TSLA: no price yet`);
+  }
+}, 5000);
 server.listen(PORT, () => console.log(`Backend on :${PORT}`));
 
