@@ -58,11 +58,6 @@ const io = new Server<ClientToServerEvents, ServerToClientEvents>(server, {
 const latestPrices: Record<string, PriceUpdate> = {};
 const SYMBOLS = ['TSLA'];
 
-app.get('/api/price/:symbol', (req, res) => {
-  const sym = req.params.symbol.toUpperCase();
-  res.json(latestPrices[sym] ?? null);
-});
-
 const ALPACA_WS = 'wss://stream.data.alpaca.markets/v2/iex';
 
 function connectAlpaca(): void {
