@@ -29,8 +29,8 @@ export const FREE_TIER = {
  * prices come from the provider, not hard-coded values.
  */
 export const DEFAULT_WATCHLIST: readonly string[] = [
-  'AAPL',
-  'NVDA',
+  'TQQQ',
+  'SQQQ',
   'TSLA',
   'AMZN',
   'COIN',

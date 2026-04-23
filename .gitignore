@@ -26,6 +26,8 @@ jspm_packages/
 # React frontend build
 build/
 dist/
+dist-ssr/
+*.local
 
 # ========================
 # Logs
@@ -90,10 +92,10 @@ temp/
 # ========================
 # IDE / Editors
 # ========================
-.vscode/
+.vscode/*
+!.vscode/extensions.json
 .idea/
-*.swp
-*.swo
+*.sw?
 *.sublime-workspace
 *.sublime-project
 
