@@ -1,104 +1,59 @@
-// Shared types for Paper Trade Pro
+// -----------------------------------------------------------------------------
+// Frontend-local types. Domain types (Portfolio, Order, Alert, etc.) live in
+// shared/ and are re-exported here so existing imports keep working.
+// This file holds only UI-scoped types: view-models, page keys, modal ctx,
+// and theme/tweak preferences.
+// -----------------------------------------------------------------------------
 
-export type OrderType =
-  | 'market'
-  | 'limit'
-  | 'stop'
-  | 'stop_limit'
-  | 'trailing_stop'
-  | 'conditional';
+export type {
+  AlertCondition,
+  OrderSide,
+  OrderType,
+  TimeInForce,
+  Alert,
+  Order,
+  Portfolio,
+  AddAlertInput,
+  PlaceOrderInput,
+} from '../../../shared/src';
 
-export type OrderSide = 'buy' | 'sell' | 'short' | 'cover';
+/**
+ * Freshness of a quote as observed by the frontend:
+ *   loading  — request pending; no value yet
+ *   live     — tick seen within STALE_AFTER_MS
+ *   stale    — had a tick but nothing recent
+ *   error    — last fetch failed
+ */
+export type PriceFreshness = 'loading' | 'live' | 'stale' | 'error';
 
-export type OrderStatus =
-  | 'pending'
-  | 'pending_fill'
-  | 'filled'
-  | 'cancelled';
-
-export type PositionSide = 'long' | 'short';
-
-export type AlertCondition = 'above' | 'below';
-
-export type TimeInForce = 'day' | 'gtc' | 'ioc';
-
-export interface SeedStock {
+/**
+ * A ticker's view-model. Metadata (name/sector) is display-only and
+ * comes from STOCK_META; the rest is sourced from the backend provider.
+ *
+ * Fields that the provider may not supply are null — the UI renders "—".
+ */
+export interface StockSnapshot {
   ticker: string;
   name: string;
   sector: string;
   price: number;
-  vol: number;
-  mcap: string;
-}
-
-export interface StockSnapshot extends SeedStock {
+  /** Last tick before the current one; drives flash-on-change. */
   prev: number;
+  /** Rolling history built from live ticks for the sparkline. */
   history: number[];
-  bid: number;
-  ask: number;
-  dayHigh: number;
-  dayLow: number;
-  dayOpen: number;
+  bid: number | null;
+  ask: number | null;
+  dayOpen: number | null;
+  dayHigh: number | null;
+  dayLow: number | null;
+  prevClose: number | null;
+  volume: number | null;
+  /** Epoch ms of the latest update. */
+  lastUpdated: number;
+  freshness: PriceFreshness;
 }
 
 export type Market = Record<string, StockSnapshot>;
-
-export interface ConditionalTrigger {
-  ticker: string;
-  op: '>=' | '<=';
-  price: number;
-}
-
-export interface Order {
-  id: string;
-  ticker: string;
-  side: OrderSide;
-  type: OrderType;
-  qty: number;
-  tif: TimeInForce;
-  status: OrderStatus;
-  createdAt: number;
-  limitPrice?: number;
-  stopPrice?: number;
-  trailPct?: number;
-  peak?: number;
-  condTrigger?: ConditionalTrigger;
-  innerType?: OrderType;
-  filledAt?: number;
-  cancelledAt?: number;
-  fillPrice?: number;
-}
-
-export interface Position {
-  id: string;
-  ticker: string;
-  side: PositionSide;
-  qty: number;
-  avgPrice: number;
-  openedAt: number;
-}
-
-export interface Alert {
-  id: string;
-  ticker: string;
-  condition: AlertCondition;
-  price: number;
-  active: boolean;
-  note?: string;
-  createdAt: number;
-  triggeredAt?: number;
-  triggeredPrice?: number;
-}
-
-export interface Portfolio {
-  cash: number;
-  initialCash: number;
-  positions: Position[];
-  orders: Order[];
-  alerts: Alert[];
-  watchlist: string[];
-  history: Order[];
-}
 
 export interface Valuation {
   marketValue: number;
@@ -119,7 +74,7 @@ export type PageKey =
 
 export interface TradeCtx {
   ticker: string;
-  side: OrderSide;
+  side: import('../../../shared/src').OrderSide;
 }
 
 export interface AlertCtx {
@@ -128,7 +83,6 @@ export interface AlertCtx {
 
 export interface Tweaks {
   accent: string;
-  density: 'comfortable' | 'compact';
   gainColor: string;
   lossColor: string;
 }

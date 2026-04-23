@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Icon, type IconName } from './components/Icon';
 import { TradeTicket } from './components/TradeTicket';
 import { AddStockModal } from './components/AddStockModal';
@@ -13,8 +13,10 @@ import { AccountPage } from './pages/AccountPage';
 import { useMarket } from './hooks/useMarket';
 import { usePortfolio } from './hooks/usePortfolio';
 import { fmtMoney, fmtPct } from './lib/format';
+import { STOCK_META } from './lib/seedStocks';
 import type {
   AlertCtx,
+  Market,
   PageKey,
   Theme,
   TradeCtx,
@@ -23,7 +25,6 @@ import type {
 
 const TWEAK_DEFAULTS: Tweaks = {
   accent: '#4f46e5',
-  density: 'comfortable',
   gainColor: '#059669',
   lossColor: '#e11d48',
 };
@@ -53,8 +54,18 @@ export default function App() {
   const [tweaksOpen, setTweaksOpen] = useState(false);
   const [tweaks, setTweaks] = useState<Tweaks>(TWEAK_DEFAULTS);
 
-  const { market, paused, setPaused, speed, setSpeed, liveConnected } =
-    useMarket();
+  // ---- portfolio <-> market wiring ----------------------------------------
+  // usePortfolio needs the live Market so placeOrder can fill at ask/bid and
+  // the order/alert evaluator can trigger against real prices. But useMarket
+  // (below) depends on portfolio state to know which symbols to subscribe to,
+  // which would be circular.
+  //
+  // We break the cycle with a mirrored Market state: usePortfolio consumes
+  // `marketView`, useMarket returns the live `market`, and an effect further
+  // down copies `market` → `marketView` on every update. One extra render per
+  // tick; placeOrder always sees fresh data.
+  // -----------------------------------------------------------------------
+  const [marketView, setMarketView] = useState<Market>({});
   const {
     portfolio,
     valuation,
@@ -65,7 +76,39 @@ export default function App() {
     addAlert,
     removeAlert,
     toggleAlert,
-  } = usePortfolio(market);
+  } = usePortfolio(marketView);
+
+  const interestingSymbols = useMemo(() => {
+    const set = new Set<string>();
+    portfolio.watchlist.forEach((t) => set.add(t));
+    portfolio.positions.forEach((p) => set.add(p.ticker));
+    portfolio.orders.forEach((o) => set.add(o.ticker));
+    portfolio.alerts.forEach((a) => set.add(a.ticker));
+    if (page === 'detail' && detailTicker) set.add(detailTicker);
+    if (tradeCtx?.ticker) set.add(tradeCtx.ticker);
+    if (alertCtx?.ticker) set.add(alertCtx.ticker);
+    // Include the static catalog so the Add modal can search + display prices.
+    STOCK_META.forEach((m) => set.add(m.ticker));
+    return Array.from(set).map((s) => s.toUpperCase());
+  }, [
+    portfolio.watchlist,
+    portfolio.positions,
+    portfolio.orders,
+    portfolio.alerts,
+    page,
+    detailTicker,
+    tradeCtx?.ticker,
+    alertCtx?.ticker,
+  ]);
+
+  const { market, liveConnected, providerStatus, provider, error } =
+    useMarket(interestingSymbols);
+
+  // Mirror the live market into `marketView` so usePortfolio sees fresh data.
+  // This is the second half of the cycle-break described above.
+  useEffect(() => {
+    setMarketView(market);
+  }, [market]);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -92,7 +135,6 @@ export default function App() {
     }
   }, [detailTicker]);
 
-  // Apply live tweaks
   useEffect(() => {
     const r = document.documentElement.style;
     r.setProperty('--accent', tweaks.accent);
@@ -115,9 +157,51 @@ export default function App() {
   const workingOrders = portfolio.orders.filter(
     (o) => o.status === 'pending' || o.status === 'pending_fill',
   ).length;
-  const totalValue = valuation.equity;
+
+  // Reconcile valuation using the live market.
+  const liveValuation = useMemo(() => {
+    let marketValue = 0;
+    let unrealizedPnL = 0;
+    portfolio.positions.forEach((p) => {
+      const m = market[p.ticker];
+      if (!m) return;
+      if (p.side === 'long') {
+        marketValue += m.price * p.qty;
+        unrealizedPnL += (m.price - p.avgPrice) * p.qty;
+      } else {
+        marketValue += p.avgPrice * p.qty;
+        unrealizedPnL += (p.avgPrice - m.price) * p.qty;
+      }
+    });
+    const shortDiff = portfolio.positions
+      .filter((p) => p.side === 'short')
+      .reduce((s, p) => {
+        const m = market[p.ticker];
+        if (!m) return s;
+        return s + (p.avgPrice - m.price) * p.qty;
+      }, 0);
+    const equity = portfolio.cash + marketValue + shortDiff;
+    const totalPnL = equity - portfolio.initialCash;
+    return {
+      marketValue,
+      unrealizedPnL,
+      equity,
+      totalPnL,
+      dayPnL: unrealizedPnL,
+    };
+  }, [market, portfolio.positions, portfolio.cash, portfolio.initialCash]);
+
+  // Prefer the live valuation (reflects real market) over the empty-market
+  // fallback returned by usePortfolio.
+  const effectiveValuation = liveValuation.marketValue > 0 || portfolio.positions.length === 0
+    ? liveValuation
+    : valuation;
+
+  const totalValue = effectiveValuation.equity;
   const totalPct =
-    ((totalValue - portfolio.initialCash) / portfolio.initialCash) * 100;
+    portfolio.initialCash === 0
+      ? 0
+      : ((totalValue - portfolio.initialCash) / portfolio.initialCash) * 100;
 
   const navItems: {
     id: PageKey;
@@ -159,7 +243,7 @@ export default function App() {
           <DashboardPage
             market={market}
             portfolio={portfolio}
-            valuation={valuation}
+            valuation={effectiveValuation}
             onNavigate={onNavigate}
             setTradeCtx={setTradeCtx}
           />
@@ -192,7 +276,7 @@ export default function App() {
           <PositionsPage
             market={market}
             portfolio={portfolio}
-            valuation={valuation}
+            valuation={effectiveValuation}
             setTradeCtx={setTradeCtx}
           />
         );
@@ -218,7 +302,7 @@ export default function App() {
         return (
           <AccountPage
             portfolio={portfolio}
-            valuation={valuation}
+            valuation={effectiveValuation}
             resetFunds={resetFunds}
           />
         );
@@ -226,6 +310,37 @@ export default function App() {
         return null;
     }
   };
+
+  // Status pill derivation — single place to compute what the top-right
+  // indicator should show.
+  const statusPill = (() => {
+    if (!liveConnected) {
+      return {
+        label: 'Offline',
+        dot: 'var(--down)',
+        title: 'Backend socket disconnected',
+      } as const;
+    }
+    if (providerStatus === 'live') {
+      return {
+        label: `Live · ${provider || 'provider'}`,
+        dot: 'var(--up)',
+        title: `${provider} stream connected`,
+      } as const;
+    }
+    if (providerStatus === 'stale') {
+      return {
+        label: 'Stale',
+        dot: '#f59e0b',
+        title: 'No recent ticks — market may be closed',
+      } as const;
+    }
+    return {
+      label: 'Unavailable',
+      dot: 'var(--down)',
+      title: error ?? 'Provider unavailable',
+    } as const;
+  })();
 
   return (
     <div className="app">
@@ -258,27 +373,28 @@ export default function App() {
         </div>
 
         <div className="top-actions">
-          <button
+          <span
             className="btn ghost sm"
-            onClick={() => setPaused(!paused)}
-            title={paused ? 'Resume market feed' : 'Pause market feed'}
+            title={statusPill.title}
+            style={{ cursor: 'default' }}
           >
-            <Icon name={paused ? 'play' : 'pause'} size={13} />
-            {paused ? 'Resume' : liveConnected ? 'Live' : 'Sim'}
+            {statusPill.label}
             <span
               style={{
                 width: 7,
                 height: 7,
                 borderRadius: 7,
-                background: paused ? 'var(--text-dim)' : 'var(--up)',
-                boxShadow: paused
-                  ? 'none'
-                  : '0 0 0 3px rgba(5,150,105,0.18)',
+                background: statusPill.dot,
+                boxShadow:
+                  providerStatus === 'live'
+                    ? '0 0 0 3px rgba(5,150,105,0.18)'
+                    : 'none',
                 marginLeft: 2,
-                animation: paused ? 'none' : 'pulse 1.6s infinite',
+                animation:
+                  providerStatus === 'live' ? 'pulse 1.6s infinite' : 'none',
               }}
             />
-          </button>
+          </span>
           <button
             className="btn ghost icon-only"
             onClick={() => setTweaksOpen((v) => !v)}
@@ -335,12 +451,8 @@ export default function App() {
             lineHeight: 1.5,
           }}
         >
-          Simulated data for practice only. Not real market prices.
-          {liveConnected && (
-            <span style={{ color: 'var(--up)' }}>
-              <br />● Live feed connected
-            </span>
-          )}
+          Paper trading — simulated funds, real market data
+          {provider ? ` (${provider})` : ''}.
         </div>
       </aside>
 
@@ -446,24 +558,6 @@ export default function App() {
                 >
                   Blue / Orange
                 </button>
-              </div>
-            </div>
-            <div className="tweaks-row">
-              <label className="label">Simulation speed</label>
-              <div
-                className="segmented"
-                style={{ display: 'flex', width: '100%' }}
-              >
-                {[0.5, 1, 2, 4].map((s) => (
-                  <button
-                    key={s}
-                    className={speed === s ? 'active' : ''}
-                    style={{ flex: 1 }}
-                    onClick={() => setSpeed(s)}
-                  >
-                    {s}×
-                  </button>
-                ))}
               </div>
             </div>
             <div className="tweaks-row">

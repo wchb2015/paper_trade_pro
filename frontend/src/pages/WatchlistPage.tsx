@@ -3,6 +3,7 @@ import { PriceCell } from '../components/PriceCell';
 import { Sparkline } from '../components/Sparkline';
 import { Empty } from '../components/Empty';
 import { fmtPct, fmtVol } from '../lib/format';
+import { dayChange, dayChangePct } from '../lib/quote';
 import type {
   Market,
   PageKey,
@@ -76,8 +77,8 @@ export function WatchlistPage({
         )}
         {rows.map(({ ticker, m }) => {
           if (!m) return null;
-          const pct = ((m.price - m.dayOpen) / m.dayOpen) * 100;
-          const change = m.price - m.dayOpen;
+          const pct = dayChangePct(m);
+          const change = dayChange(m);
           return (
             <div
               key={ticker}
@@ -121,7 +122,7 @@ export function WatchlistPage({
                 className="mono tnum"
                 style={{ textAlign: 'right', color: 'var(--text-muted)' }}
               >
-                {fmtVol(m.vol)}
+                {m.volume != null ? fmtVol(m.volume) : '—'}
               </div>
               <div style={{ display: 'flex', justifyContent: 'center' }}>
                 <Sparkline

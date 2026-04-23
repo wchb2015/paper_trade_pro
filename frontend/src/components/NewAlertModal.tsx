@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Modal } from './Modal';
-import { SEED_STOCKS } from '../lib/seedStocks';
+import { STOCK_META } from '../lib/seedStocks';
 import type { AlertCondition, Market } from '../lib/types';
 
 interface NewAlertModalProps {
@@ -55,7 +55,7 @@ export function NewAlertModal({
           value={sel}
           onChange={(e) => setSel(e.target.value)}
         >
-          {SEED_STOCKS.map((s) => (
+          {STOCK_META.map((s) => (
             <option key={s.ticker} value={s.ticker}>
               {s.ticker} · {s.name}
             </option>

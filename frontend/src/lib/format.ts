@@ -32,11 +32,6 @@ export const fmtPct = (n: number | null | undefined, opts: PctOpts = {}): string
   return `${sign}${n.toFixed(digits)}%`;
 };
 
-export const fmtNum = (n: number | null | undefined): string => {
-  if (n == null || Number.isNaN(n)) return '—';
-  return n.toLocaleString('en-US');
-};
-
 export const fmtVol = (n: number | null | undefined): string => {
   if (n == null) return '—';
   if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';

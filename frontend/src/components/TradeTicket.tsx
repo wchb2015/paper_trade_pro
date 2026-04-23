@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Modal } from './Modal';
-import { SEED_STOCKS } from '../lib/seedStocks';
+import { STOCK_META } from '../lib/seedStocks';
 import type {
   Market,
   OrderSide,
@@ -202,13 +202,19 @@ export function TradeTicket({
           }}
         >
           <div className="mono tnum" style={{ color: 'var(--text-muted)' }}>
-            Bid <span style={{ color: 'var(--text)' }}>{m.bid.toFixed(2)}</span>
+            Bid{' '}
+            <span style={{ color: 'var(--text)' }}>
+              {m.bid != null ? m.bid.toFixed(2) : '—'}
+            </span>
           </div>
           <div
             className="mono tnum"
             style={{ color: 'var(--text-muted)', marginTop: 2 }}
           >
-            Ask <span style={{ color: 'var(--text)' }}>{m.ask.toFixed(2)}</span>
+            Ask{' '}
+            <span style={{ color: 'var(--text)' }}>
+              {m.ask != null ? m.ask.toFixed(2) : '—'}
+            </span>
           </div>
         </div>
       </div>
@@ -377,7 +383,7 @@ export function TradeTicket({
               value={condTicker}
               onChange={(e) => setCondTicker(e.target.value)}
             >
-              {SEED_STOCKS.map((s) => (
+              {STOCK_META.map((s) => (
                 <option key={s.ticker} value={s.ticker}>
                   {s.ticker}
                 </option>

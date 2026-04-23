@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Modal } from './Modal';
 import { Empty } from './Empty';
-import { SEED_STOCKS } from '../lib/seedStocks';
+import { STOCK_META } from '../lib/seedStocks';
 import { fmtPct } from '../lib/format';
+import { dayChangePct, money } from '../lib/quote';
 import type { Market } from '../lib/types';
 
 interface AddStockModalProps {
@@ -24,7 +25,7 @@ export function AddStockModal({
 
   const results = useMemo(() => {
     const query = q.trim().toUpperCase();
-    return SEED_STOCKS.filter(
+    return STOCK_META.filter(
       (s) =>
         !query ||
         s.ticker.includes(query) ||
@@ -54,7 +55,7 @@ export function AddStockModal({
         {results.map((s) => {
           const m = market[s.ticker];
           const added = existing.includes(s.ticker);
-          const pct = m ? ((m.price - m.dayOpen) / m.dayOpen) * 100 : 0;
+          const pct = m ? dayChangePct(m) : 0;
           return (
             <div
               key={s.ticker}
@@ -72,7 +73,7 @@ export function AddStockModal({
                 <div className="company">{s.name}</div>
               </div>
               <div className="mono tnum" style={{ textAlign: 'right' }}>
-                <div>${m?.price.toFixed(2)}</div>
+                <div>{money(m?.price ?? null)}</div>
                 <div
                   className={pct >= 0 ? 'up' : 'down'}
                   style={{ fontSize: 11.5 }}

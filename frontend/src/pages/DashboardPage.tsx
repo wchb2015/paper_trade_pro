@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
-import { SEED_STOCKS } from '../lib/seedStocks';
+import { STOCK_META } from '../lib/seedStocks';
+import { dayChangePct } from '../lib/quote';
 import { fmtMoney, fmtPct } from '../lib/format';
 import { PriceChart } from '../components/PriceChart';
 import { PriceCell } from '../components/PriceCell';
@@ -47,10 +48,10 @@ export function DashboardPage({
   }, [totalValue, initialCash]);
 
   const topMovers = useMemo(() => {
-    return [...SEED_STOCKS]
+    return [...STOCK_META]
       .map((s) => {
         const m = market[s.ticker];
-        const pct = m ? ((m.price - m.dayOpen) / m.dayOpen) * 100 : 0;
+        const pct = m ? dayChangePct(m) : 0;
         return { ...s, m, pct };
       })
       .filter((s) => s.m)
@@ -64,7 +65,7 @@ export function DashboardPage({
         <div>
           <h1 className="page-title">Dashboard</h1>
           <div className="page-subtitle">
-            Paper trading · Simulated US equities
+            Paper trading · Real market data
           </div>
         </div>
       </div>

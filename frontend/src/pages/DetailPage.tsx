@@ -3,6 +3,7 @@ import { Icon } from '../components/Icon';
 import { PriceChart } from '../components/PriceChart';
 import { Empty } from '../components/Empty';
 import { fmtMoney, fmtPct, fmtVol } from '../lib/format';
+import { dayChange, dayChangePct, money } from '../lib/quote';
 import type {
   AlertCtx,
   Market,
@@ -53,9 +54,10 @@ export function DetailPage({
     );
   }
 
-  const dataSlice = m.history.slice(-ranges[range]);
-  const pct = ((m.price - m.dayOpen) / m.dayOpen) * 100;
-  const change = m.price - m.dayOpen;
+  const rangeSize = ranges[range] ?? 60;
+  const dataSlice = m.history.slice(-rangeSize);
+  const pct = dayChangePct(m);
+  const change = dayChange(m);
 
   const inWatch = portfolio.watchlist.includes(ticker);
   const longPos = portfolio.positions.find(
@@ -66,13 +68,13 @@ export function DetailPage({
   );
 
   const stats: [string, ReactNode][] = [
-    ['Open', `$${m.dayOpen.toFixed(2)}`],
-    ['Day High', `$${m.dayHigh.toFixed(2)}`],
-    ['Day Low', `$${m.dayLow.toFixed(2)}`],
-    ['Volume', fmtVol(m.vol)],
-    ['Bid', `$${m.bid.toFixed(2)}`],
-    ['Ask', `$${m.ask.toFixed(2)}`],
-    ['Market Cap', m.mcap],
+    ['Open', money(m.dayOpen)],
+    ['Day High', money(m.dayHigh)],
+    ['Day Low', money(m.dayLow)],
+    ['Volume', m.volume != null ? fmtVol(m.volume) : '—'],
+    ['Bid', money(m.bid)],
+    ['Ask', money(m.ask)],
+    ['Prev Close', money(m.prevClose)],
     ['Sector', m.sector],
   ];
 
@@ -441,7 +443,7 @@ function OrderPanel({
             label="Bid × Ask"
             val={
               <span className="mono tnum">
-                ${m.bid.toFixed(2)} × ${m.ask.toFixed(2)}
+                {money(m.bid)} × {money(m.ask)}
               </span>
             }
           />
@@ -449,7 +451,9 @@ function OrderPanel({
             label="Spread"
             val={
               <span className="mono tnum">
-                ${(m.ask - m.bid).toFixed(2)}
+                {m.bid != null && m.ask != null
+                  ? `$${(m.ask - m.bid).toFixed(2)}`
+                  : '—'}
               </span>
             }
           />
@@ -457,7 +461,7 @@ function OrderPanel({
             label="Day range"
             val={
               <span className="mono tnum">
-                ${m.dayLow.toFixed(2)} – ${m.dayHigh.toFixed(2)}
+                {money(m.dayLow)} – {money(m.dayHigh)}
               </span>
             }
           />
