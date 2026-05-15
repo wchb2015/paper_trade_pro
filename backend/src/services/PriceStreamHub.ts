@@ -1,4 +1,5 @@
-import type { Server } from 'socket.io';
+import type { Server } from "socket.io";
+import { log } from "@chongbei/web-basics/server";
 import {
   SOCKET_EVENTS,
   type PriceTickPayload,
@@ -6,10 +7,10 @@ import {
   type ServerToClientEvents,
   type ClientToServerEvents,
   type Quote,
-} from '../../../shared/src';
-import type { AppConfig } from '../config';
-import type { PriceProvider } from '../providers/PriceProvider';
-import type { QuoteCache } from './QuoteCache';
+} from "../../../shared/src";
+import type { AppConfig } from "../config";
+import type { PriceProvider } from "../providers/PriceProvider";
+import type { QuoteCache } from "./QuoteCache";
 
 // -----------------------------------------------------------------------------
 // PriceStreamHub: owns the provider's WS connection and rebroadcasts ticks to
@@ -27,7 +28,7 @@ export class PriceStreamHub {
     private readonly cache: QuoteCache,
     private readonly cfg: AppConfig,
   ) {
-    this.status = { status: 'unavailable', provider: this.provider.name };
+    this.status = { status: "unavailable", provider: this.provider.name };
   }
 
   /**
@@ -46,7 +47,7 @@ export class PriceStreamHub {
 
     // Push current status to anyone who connects before the first upstream
     // message arrives.
-    this.io.on('connection', (socket) => {
+    this.io.on("connection", (socket) => {
       socket.emit(SOCKET_EVENTS.PROVIDER_STATUS, this.status);
     });
   }
@@ -60,9 +61,7 @@ export class PriceStreamHub {
     symbols: string[],
     opts: { replace?: boolean } = {},
   ): Promise<string[]> {
-    const desired = opts.replace
-      ? new Set<string>()
-      : new Set(this.subscribed);
+    const desired = opts.replace ? new Set<string>() : new Set(this.subscribed);
     for (const s of symbols) desired.add(s.toUpperCase());
 
     const next = this.capSymbols(Array.from(desired));
@@ -82,14 +81,17 @@ export class PriceStreamHub {
   // --------------------------------------------------------------------------
 
   private capSymbols(symbols: string[]): string[] {
-    const unique = Array.from(
-      new Set(symbols.map((s) => s.toUpperCase())),
-    );
+    const unique = Array.from(new Set(symbols.map((s) => s.toUpperCase())));
     if (unique.length <= this.cfg.limits.MAX_STREAM_SYMBOLS) return unique;
     // Keep the first N deterministically — this branch shouldn't trigger
     // under normal single-user use.
-    console.warn(
-      `PriceStreamHub: capping ${unique.length} -> ${this.cfg.limits.MAX_STREAM_SYMBOLS} symbols (free-tier guard)`,
+    log.warn(
+      {
+        requested: unique.length,
+        cap: this.cfg.limits.MAX_STREAM_SYMBOLS,
+        operation: "PriceStreamHub.capSymbols",
+      },
+      "capping subscription to free-tier limit",
     );
     return unique.slice(0, this.cfg.limits.MAX_STREAM_SYMBOLS);
   }
@@ -106,15 +108,35 @@ export class PriceStreamHub {
   }
 
   private handleStatusChange(
-    raw: 'connected' | 'disconnected' | 'error',
+    raw: "connected" | "disconnected" | "error",
     detail?: string,
   ): void {
     const status =
-      raw === 'connected'
-        ? ('live' as const)
-        : raw === 'disconnected'
-          ? ('unavailable' as const)
-          : ('unavailable' as const);
+      raw === "connected"
+        ? ("live" as const)
+        : raw === "disconnected"
+          ? ("unavailable" as const)
+          : ("unavailable" as const);
+    // Provider-side error/disconnect events are operationally interesting —
+    // CLAUDE.md rule 8 (log 5xx-class failures). Info log on 'connected' to
+    // mirror transitions symmetrically; error for 'error'; warn for a
+    // disconnect we didn't initiate.
+    if (raw === "error") {
+      log.error(
+        { provider: this.provider.name, detail, operation: "provider.stream" },
+        "ERROR upstream price provider reported error",
+      );
+    } else if (raw === "disconnected") {
+      log.warn(
+        { provider: this.provider.name, detail, operation: "provider.stream" },
+        "upstream price provider disconnected",
+      );
+    } else {
+      log.info(
+        { provider: this.provider.name, detail, operation: "provider.stream" },
+        "upstream price provider connected",
+      );
+    }
     const next: ProviderStatusPayload = {
       status,
       provider: this.provider.name,

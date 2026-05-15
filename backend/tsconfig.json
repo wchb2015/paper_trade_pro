@@ -19,5 +19,5 @@
     "noUncheckedSideEffectImports": true,
     "moduleDetection": "force"
   },
-  "include": ["src/**/*", "../shared/src/**/*"]
+  "include": ["src/**/*", "scripts/**/*", "../shared/src/**/*"]
 }

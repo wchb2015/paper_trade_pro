@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AddAlertInput,
   Market,
   PlaceOrderInput as SharedPlaceOrderInput,
   Portfolio,
   Valuation,
-} from '../lib/types';
-import { askOrPrice, bidOrPrice } from '../lib/quote';
-import { portfolioClient } from '../lib/portfolioClient';
+} from "../lib/types";
+import { askOrPrice, bidOrPrice } from "../lib/quote";
+import { portfolioClient } from "../lib/portfolioClient";
 
 // -----------------------------------------------------------------------------
 // usePortfolio — the single surface UI code uses for positions, orders,
@@ -27,7 +27,7 @@ export const INITIAL_CASH = 100_000;
  * the hook for market orders from the current market, so callers (the
  * trade ticket) don't have to look up ask/bid themselves.
  */
-export type PlaceOrderInput = Omit<SharedPlaceOrderInput, 'fillPrice'>;
+export type PlaceOrderInput = Omit<SharedPlaceOrderInput, "fillPrice">;
 
 export interface UsePortfolioResult {
   portfolio: Portfolio;
@@ -75,7 +75,11 @@ export function usePortfolio(market: Market): UsePortfolioResult {
   const handleError = useCallback((err: unknown) => {
     const msg = err instanceof Error ? err.message : String(err);
     if (mounted.current) setError(msg);
-    console.error('[portfolio]', msg);
+    // We do NOT silently swallow (CLAUDE.md rule 4/10): api() from
+    // @chongbei/web-basics already fires a user-visible toast with the
+    // server's ref id. Holding the message in `error` state also lets the
+    // UI render an inline banner. No extra console.error needed — the
+    // toast IS the log surface on the client.
   }, []);
 
   const applyPortfolio = useCallback((p: Portfolio) => {
@@ -106,7 +110,7 @@ export function usePortfolio(market: Market): UsePortfolioResult {
     portfolio.positions.forEach((p) => {
       const m = market[p.ticker];
       if (!m) return;
-      if (p.side === 'long') {
+      if (p.side === "long") {
         marketValue += m.price * p.qty;
         unrealizedPnL += (m.price - p.avgPrice) * p.qty;
       } else {
@@ -115,7 +119,7 @@ export function usePortfolio(market: Market): UsePortfolioResult {
       }
     });
     const shortDiff = portfolio.positions
-      .filter((p) => p.side === 'short')
+      .filter((p) => p.side === "short")
       .reduce((s, p) => {
         const m = market[p.ticker];
         if (!m) return s;
@@ -135,14 +139,14 @@ export function usePortfolio(market: Market): UsePortfolioResult {
       // Market orders need fillPrice — take the fresh ask/bid off the
       // tick-driven market map. Non-market orders let the server sit on
       // 'pending' until the client evaluator fires a /fill.
-      if (order.type === 'market') {
+      if (order.type === "market") {
         const m = market[order.ticker];
         if (!m) {
           handleError(new Error(`no market data for ${order.ticker}`));
           return;
         }
         body.fillPrice =
-          order.side === 'buy' || order.side === 'cover'
+          order.side === "buy" || order.side === "cover"
             ? askOrPrice(m)
             : bidOrPrice(m);
       }
@@ -207,7 +211,7 @@ export function usePortfolio(market: Market): UsePortfolioResult {
     if (!loaded) return;
 
     for (const order of portfolio.orders) {
-      if (order.status !== 'pending' && order.status !== 'pending_fill')
+      if (order.status !== "pending" && order.status !== "pending_fill")
         continue;
       if (inFlight.current.has(order.id)) continue;
       const m = market[order.ticker];
@@ -215,74 +219,72 @@ export function usePortfolio(market: Market): UsePortfolioResult {
 
       let trigger: number | null = null;
 
-      if (order.type === 'limit') {
+      if (order.type === "limit") {
         if (
-          order.side === 'buy' &&
+          order.side === "buy" &&
           order.limitPrice != null &&
           askOrPrice(m) <= order.limitPrice
         )
           trigger = order.limitPrice;
         if (
-          order.side === 'sell' &&
+          order.side === "sell" &&
           order.limitPrice != null &&
           bidOrPrice(m) >= order.limitPrice
         )
           trigger = order.limitPrice;
-      } else if (order.type === 'stop') {
+      } else if (order.type === "stop") {
         if (
-          order.side === 'sell' &&
+          order.side === "sell" &&
           order.stopPrice != null &&
           m.price <= order.stopPrice
         )
           trigger = bidOrPrice(m);
         if (
-          order.side === 'buy' &&
+          order.side === "buy" &&
           order.stopPrice != null &&
           m.price >= order.stopPrice
         )
           trigger = askOrPrice(m);
-      } else if (order.type === 'stop_limit') {
+      } else if (order.type === "stop_limit") {
         if (
-          order.side === 'sell' &&
+          order.side === "sell" &&
           order.stopPrice != null &&
           order.limitPrice != null &&
           m.price <= order.stopPrice
         )
           trigger = order.limitPrice;
         if (
-          order.side === 'buy' &&
+          order.side === "buy" &&
           order.stopPrice != null &&
           order.limitPrice != null &&
           m.price >= order.stopPrice
         )
           trigger = order.limitPrice;
-      } else if (order.type === 'trailing_stop' && order.trailPct != null) {
+      } else if (order.type === "trailing_stop" && order.trailPct != null) {
         const prevPeak =
           localPeaks.current.get(order.id) ?? order.peak ?? m.price;
         const newPeak =
-          order.side === 'sell'
+          order.side === "sell"
             ? Math.max(prevPeak, m.price)
             : Math.min(prevPeak, m.price);
         if (newPeak !== prevPeak) localPeaks.current.set(order.id, newPeak);
         const stopLevel =
-          order.side === 'sell'
+          order.side === "sell"
             ? newPeak * (1 - order.trailPct / 100)
             : newPeak * (1 + order.trailPct / 100);
-        if (order.side === 'sell' && m.price <= stopLevel)
+        if (order.side === "sell" && m.price <= stopLevel)
           trigger = bidOrPrice(m);
-        if (order.side === 'buy' && m.price >= stopLevel)
+        if (order.side === "buy" && m.price >= stopLevel)
           trigger = askOrPrice(m);
-      } else if (order.type === 'conditional' && order.condTrigger) {
+      } else if (order.type === "conditional" && order.condTrigger) {
         const cond = order.condTrigger;
         const cm = market[cond.ticker];
         if (cm) {
           const hit =
-            cond.op === '>='
-              ? cm.price >= cond.price
-              : cm.price <= cond.price;
+            cond.op === ">=" ? cm.price >= cond.price : cm.price <= cond.price;
           if (hit)
             trigger =
-              order.side === 'buy' || order.side === 'cover'
+              order.side === "buy" || order.side === "cover"
                 ? askOrPrice(m)
                 : bidOrPrice(m);
         }
@@ -311,7 +313,7 @@ export function usePortfolio(market: Market): UsePortfolioResult {
       const m = market[a.ticker];
       if (!m) continue;
       const hit =
-        a.condition === 'above' ? m.price >= a.price : m.price <= a.price;
+        a.condition === "above" ? m.price >= a.price : m.price <= a.price;
       if (hit) {
         inFlight.current.add(fireKey);
         portfolioClient

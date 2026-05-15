@@ -29,12 +29,12 @@ export const FREE_TIER = {
  * prices come from the provider, not hard-coded values.
  */
 export const DEFAULT_WATCHLIST: readonly string[] = [
-  'TQQQ',
-  'SQQQ',
-  'TSLA',
-  'AMZN',
-  'COIN',
+  "TQQQ",
+  "SQQQ",
+  "TSLA",
+  "AMZN",
+  "COIN",
 ];
 
-export const PROVIDERS = ['alpaca'] as const;
+export const PROVIDERS = ["alpaca", "replay"] as const;
 export type ProviderName = (typeof PROVIDERS)[number];

@@ -73,6 +73,11 @@ temp/
 *.pid.lock
 
 # ========================
+# Replay cache (downloaded historical trades — can be re-fetched)
+# ========================
+backend/.replay-cache/
+
+# ========================
 # OS - macOS
 # ========================
 .DS_Store

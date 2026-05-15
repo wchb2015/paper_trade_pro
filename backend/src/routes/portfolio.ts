@@ -1,11 +1,12 @@
-import { Router, type Request, type Response } from 'express';
+import { Router, type Request, type Response } from "express";
+import { log } from "@chongbei/web-basics/server";
 
 // Express 5 widens `req.params.id` to `string | string[] | undefined`, even
 // for routes where the pattern obviously yields a single string. Narrow it
 // once in a helper so the handler bodies stay tidy.
 function pickId(req: Request): string {
   const v = req.params.id;
-  if (typeof v !== 'string' || v.length === 0) {
+  if (typeof v !== "string" || v.length === 0) {
     throw new Error(`invalid :id path param`);
   }
   return v;
@@ -18,8 +19,8 @@ import type {
   ToggleWatchInput,
   TriggerAlertInput,
   UpdatePeakInput,
-} from '../../../shared/src';
-import type { PortfolioStore } from '../store/PortfolioStore';
+} from "../../../shared/src";
+import type { PortfolioStore } from "../store/PortfolioStore";
 
 // -----------------------------------------------------------------------------
 // Portfolio REST routes. Every mutating endpoint returns the refreshed
@@ -29,6 +30,10 @@ import type { PortfolioStore } from '../store/PortfolioStore';
 // All endpoints operate on a single user id injected by the caller. For
 // pre-auth, server.ts passes `cfg.currentUserId`; when we add login, swap
 // this to a session lookup — no route code needs to change.
+//
+// Logging: every catch logs with `log.error({ err, route, userId }, ...)`
+// before responding. `attachRef` in server.ts auto-attaches a per-request
+// `ref` to each line. No silent failures (CLAUDE.md rules 1, 6, 8).
 // -----------------------------------------------------------------------------
 
 interface RouteDeps {
@@ -41,13 +46,13 @@ function asError(err: unknown): { status: number; message: string } {
   // Our store throws on client-correctable issues (bad enum, missing
   // price, wrong order state). Treat these as 400s.
   const clientErrorMarkers = [
-    'invalid',
-    'required',
-    'must be',
-    'not found',
-    'not cancellable',
-    'cannot fill',
-    'already triggered',
+    "invalid",
+    "required",
+    "must be",
+    "not found",
+    "not cancellable",
+    "cannot fill",
+    "already triggered",
   ];
   const isClient = clientErrorMarkers.some((m) =>
     message.toLowerCase().includes(m),
@@ -60,48 +65,63 @@ export function createPortfolioRouter(deps: RouteDeps): Router {
   const { store, getUserId } = deps;
 
   // GET /api/portfolio — full snapshot
-  router.get('/portfolio', async (req: Request, res: Response) => {
+  router.get("/portfolio", async (req: Request, res: Response) => {
     try {
       const portfolio = await store.getPortfolio(getUserId(req));
       res.json(portfolio);
     } catch (err) {
       const { status, message } = asError(err);
-      console.error('[GET /portfolio]', message);
+      log.error(
+        { err, route: "GET /portfolio", userId: getUserId(req), status },
+        "ERROR GET /portfolio failed",
+      );
       res.status(status).json({ error: message });
     }
   });
 
   // POST /api/orders — place a new order (market orders fill in-line)
-  router.post('/orders', async (req: Request, res: Response) => {
+  router.post("/orders", async (req: Request, res: Response) => {
     try {
       const body = (req.body ?? {}) as PlaceOrderInput;
       const portfolio = await store.placeOrder(getUserId(req), body);
       res.json(portfolio);
     } catch (err) {
       const { status, message } = asError(err);
-      console.error('[POST /orders]', message);
+      log.error(
+        { err, route: "POST /orders", userId: getUserId(req), status },
+        "ERROR POST /orders failed",
+      );
       res.status(status).json({ error: message });
     }
   });
 
   // POST /api/orders/:id/cancel
-  router.post('/orders/:id/cancel', async (req: Request, res: Response) => {
+  router.post("/orders/:id/cancel", async (req: Request, res: Response) => {
     try {
       const portfolio = await store.cancelOrder(getUserId(req), pickId(req));
       res.json(portfolio);
     } catch (err) {
       const { status, message } = asError(err);
-      console.error('[POST /orders/:id/cancel]', message);
+      log.error(
+        {
+          err,
+          route: "POST /orders/:id/cancel",
+          userId: getUserId(req),
+          orderId: req.params.id,
+          status,
+        },
+        "ERROR POST /orders/:id/cancel failed",
+      );
       res.status(status).json({ error: message });
     }
   });
 
   // POST /api/orders/:id/fill — triggered fill for limit/stop/trailing/conditional
-  router.post('/orders/:id/fill', async (req: Request, res: Response) => {
+  router.post("/orders/:id/fill", async (req: Request, res: Response) => {
     try {
       const body = (req.body ?? {}) as FillOrderInput;
-      if (typeof body.fillPrice !== 'number') {
-        return res.status(400).json({ error: 'fillPrice (number) required' });
+      if (typeof body.fillPrice !== "number") {
+        return res.status(400).json({ error: "fillPrice (number) required" });
       }
       const portfolio = await store.fillOrder(
         getUserId(req),
@@ -111,17 +131,26 @@ export function createPortfolioRouter(deps: RouteDeps): Router {
       return res.json(portfolio);
     } catch (err) {
       const { status, message } = asError(err);
-      console.error('[POST /orders/:id/fill]', message);
+      log.error(
+        {
+          err,
+          route: "POST /orders/:id/fill",
+          userId: getUserId(req),
+          orderId: req.params.id,
+          status,
+        },
+        "ERROR POST /orders/:id/fill failed",
+      );
       return res.status(status).json({ error: message });
     }
   });
 
   // POST /api/orders/:id/peak — trailing-stop peak update
-  router.post('/orders/:id/peak', async (req: Request, res: Response) => {
+  router.post("/orders/:id/peak", async (req: Request, res: Response) => {
     try {
       const body = (req.body ?? {}) as UpdatePeakInput;
-      if (typeof body.peak !== 'number') {
-        return res.status(400).json({ error: 'peak (number) required' });
+      if (typeof body.peak !== "number") {
+        return res.status(400).json({ error: "peak (number) required" });
       }
       const portfolio = await store.updateTrailingPeak(
         getUserId(req),
@@ -131,42 +160,63 @@ export function createPortfolioRouter(deps: RouteDeps): Router {
       return res.json(portfolio);
     } catch (err) {
       const { status, message } = asError(err);
-      console.error('[POST /orders/:id/peak]', message);
+      log.error(
+        {
+          err,
+          route: "POST /orders/:id/peak",
+          userId: getUserId(req),
+          orderId: req.params.id,
+          status,
+        },
+        "ERROR POST /orders/:id/peak failed",
+      );
       return res.status(status).json({ error: message });
     }
   });
 
   // POST /api/alerts — add
-  router.post('/alerts', async (req: Request, res: Response) => {
+  router.post("/alerts", async (req: Request, res: Response) => {
     try {
       const body = (req.body ?? {}) as AddAlertInput;
       const portfolio = await store.addAlert(getUserId(req), body);
       res.json(portfolio);
     } catch (err) {
       const { status, message } = asError(err);
-      console.error('[POST /alerts]', message);
+      log.error(
+        { err, route: "POST /alerts", userId: getUserId(req), status },
+        "ERROR POST /alerts failed",
+      );
       res.status(status).json({ error: message });
     }
   });
 
   // POST /api/alerts/:id/toggle
-  router.post('/alerts/:id/toggle', async (req: Request, res: Response) => {
+  router.post("/alerts/:id/toggle", async (req: Request, res: Response) => {
     try {
       const portfolio = await store.toggleAlert(getUserId(req), pickId(req));
       res.json(portfolio);
     } catch (err) {
       const { status, message } = asError(err);
-      console.error('[POST /alerts/:id/toggle]', message);
+      log.error(
+        {
+          err,
+          route: "POST /alerts/:id/toggle",
+          userId: getUserId(req),
+          alertId: req.params.id,
+          status,
+        },
+        "ERROR POST /alerts/:id/toggle failed",
+      );
       res.status(status).json({ error: message });
     }
   });
 
   // POST /api/alerts/:id/trigger — client observed the price crossing
-  router.post('/alerts/:id/trigger', async (req: Request, res: Response) => {
+  router.post("/alerts/:id/trigger", async (req: Request, res: Response) => {
     try {
       const body = (req.body ?? {}) as TriggerAlertInput;
-      if (typeof body.price !== 'number') {
-        return res.status(400).json({ error: 'price (number) required' });
+      if (typeof body.price !== "number") {
+        return res.status(400).json({ error: "price (number) required" });
       }
       const portfolio = await store.markAlertTriggered(
         getUserId(req),
@@ -176,48 +226,77 @@ export function createPortfolioRouter(deps: RouteDeps): Router {
       return res.json(portfolio);
     } catch (err) {
       const { status, message } = asError(err);
-      console.error('[POST /alerts/:id/trigger]', message);
+      log.error(
+        {
+          err,
+          route: "POST /alerts/:id/trigger",
+          userId: getUserId(req),
+          alertId: req.params.id,
+          status,
+        },
+        "ERROR POST /alerts/:id/trigger failed",
+      );
       return res.status(status).json({ error: message });
     }
   });
 
   // DELETE /api/alerts/:id
-  router.delete('/alerts/:id', async (req: Request, res: Response) => {
+  router.delete("/alerts/:id", async (req: Request, res: Response) => {
     try {
       const portfolio = await store.removeAlert(getUserId(req), pickId(req));
       res.json(portfolio);
     } catch (err) {
       const { status, message } = asError(err);
-      console.error('[DELETE /alerts/:id]', message);
+      log.error(
+        {
+          err,
+          route: "DELETE /alerts/:id",
+          userId: getUserId(req),
+          alertId: req.params.id,
+          status,
+        },
+        "ERROR DELETE /alerts/:id failed",
+      );
       res.status(status).json({ error: message });
     }
   });
 
   // POST /api/watchlist/toggle
-  router.post('/watchlist/toggle', async (req: Request, res: Response) => {
+  router.post("/watchlist/toggle", async (req: Request, res: Response) => {
     try {
       const body = (req.body ?? {}) as ToggleWatchInput;
-      if (typeof body.ticker !== 'string' || !body.ticker) {
-        return res.status(400).json({ error: 'ticker (string) required' });
+      if (typeof body.ticker !== "string" || !body.ticker) {
+        return res.status(400).json({ error: "ticker (string) required" });
       }
       const portfolio = await store.toggleWatch(getUserId(req), body.ticker);
       return res.json(portfolio);
     } catch (err) {
       const { status, message } = asError(err);
-      console.error('[POST /watchlist/toggle]', message);
+      log.error(
+        {
+          err,
+          route: "POST /watchlist/toggle",
+          userId: getUserId(req),
+          status,
+        },
+        "ERROR POST /watchlist/toggle failed",
+      );
       return res.status(status).json({ error: message });
     }
   });
 
   // POST /api/portfolio/reset — dev: wipes positions/orders/alerts/watchlist
-  router.post('/portfolio/reset', async (req: Request, res: Response) => {
+  router.post("/portfolio/reset", async (req: Request, res: Response) => {
     try {
       const body = (req.body ?? {}) as ResetFundsInput;
       const portfolio = await store.resetFunds(getUserId(req), body.cash);
       res.json(portfolio);
     } catch (err) {
       const { status, message } = asError(err);
-      console.error('[POST /portfolio/reset]', message);
+      log.error(
+        { err, route: "POST /portfolio/reset", userId: getUserId(req), status },
+        "ERROR POST /portfolio/reset failed",
+      );
       res.status(status).json({ error: message });
     }
   });

@@ -1,4 +1,5 @@
-import { io, type Socket } from 'socket.io-client';
+import { io, type Socket } from "socket.io-client";
+import { api } from "@chongbei/web-basics/client";
 import type {
   ClientToServerEvents,
   PriceTickPayload,
@@ -7,9 +8,9 @@ import type {
   QuotesResponse,
   ServerToClientEvents,
   SubscriptionsResponse,
-} from '../../../shared/src';
-import { SOCKET_EVENTS } from '../../../shared/src';
-import { config } from '../config';
+} from "../../../shared/src";
+import { SOCKET_EVENTS } from "../../../shared/src";
+import { config } from "../config";
 
 // -----------------------------------------------------------------------------
 // Single source of truth for talking to the backend. REST calls are cached
@@ -32,40 +33,30 @@ export class PriceClient {
     this.baseUrl = baseUrl;
   }
 
-  /** Batched snapshot fetch. */
+  /** Batched snapshot fetch. Errors throw ApiError + fire a toast. */
   async fetchQuotes(symbols: string[]): Promise<QuotesResponse> {
     const q = new URLSearchParams({
-      symbols: symbols.map((s) => s.toUpperCase()).join(','),
+      symbols: symbols.map((s) => s.toUpperCase()).join(","),
     });
-    const res = await fetch(`${this.baseUrl}/api/quotes?${q}`);
-    if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      throw new Error(`/api/quotes ${res.status}: ${body}`);
-    }
-    return (await res.json()) as QuotesResponse;
+    return api<QuotesResponse>(`${this.baseUrl}/api/quotes?${q}`);
   }
 
   /**
    * Tell the backend to ensure its WS stream includes `symbols`. Additive by
-   * default — safe to call from any component on mount.
+   * default — safe to call from any component on mount. Errors throw
+   * ApiError + fire a toast via configureApi.
    */
   async ensureSubscribed(
     symbols: string[],
     opts: { replace?: boolean } = {},
   ): Promise<SubscriptionsResponse> {
-    const res = await fetch(`${this.baseUrl}/api/subscriptions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    return api<SubscriptionsResponse>(`${this.baseUrl}/api/subscriptions`, {
+      method: "POST",
       body: JSON.stringify({
         symbols: symbols.map((s) => s.toUpperCase()),
         replace: !!opts.replace,
       }),
     });
-    if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      throw new Error(`/api/subscriptions ${res.status}: ${body}`);
-    }
-    return (await res.json()) as SubscriptionsResponse;
   }
 
   /** Open the socket and start pushing ticks to the subscriber. */
@@ -76,9 +67,9 @@ export class PriceClient {
       reconnectionDelay: 2_000,
       timeout: 4_000,
     });
-    socket.on('connect', () => subs.onConnectionChange(true));
-    socket.on('disconnect', () => subs.onConnectionChange(false));
-    socket.on('connect_error', () => subs.onConnectionChange(false));
+    socket.on("connect", () => subs.onConnectionChange(true));
+    socket.on("disconnect", () => subs.onConnectionChange(false));
+    socket.on("connect_error", () => subs.onConnectionChange(false));
     socket.on(SOCKET_EVENTS.PRICE_TICK, subs.onTick);
     socket.on(SOCKET_EVENTS.PROVIDER_STATUS, subs.onStatus);
     this.socket = socket;

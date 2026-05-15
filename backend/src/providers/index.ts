@@ -1,6 +1,7 @@
-import type { AppConfig } from '../config';
-import { AlpacaProvider } from './AlpacaProvider';
-import type { PriceProvider } from './PriceProvider';
+import type { AppConfig } from "../config";
+import { AlpacaProvider } from "./AlpacaProvider";
+import { ReplayProvider } from "./ReplayProvider";
+import type { PriceProvider } from "./PriceProvider";
 
 /**
  * Factory. The only place in the app that knows which concrete provider to
@@ -8,8 +9,10 @@ import type { PriceProvider } from './PriceProvider';
  */
 export function createPriceProvider(cfg: AppConfig): PriceProvider {
   switch (cfg.provider) {
-    case 'alpaca':
+    case "alpaca":
       return new AlpacaProvider(cfg);
+    case "replay":
+      return new ReplayProvider(cfg);
     default: {
       // Exhaustiveness check — if someone adds a new provider name but
       // forgets to wire it in, TS will error here.
@@ -19,4 +22,4 @@ export function createPriceProvider(cfg: AppConfig): PriceProvider {
   }
 }
 
-export type { PriceProvider } from './PriceProvider';
+export type { PriceProvider } from "./PriceProvider";

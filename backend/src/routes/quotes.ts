@@ -1,14 +1,15 @@
-import { Router, type Request, type Response } from 'express';
+import { Router, type Request, type Response } from "express";
+import { log } from "@chongbei/web-basics/server";
 import type {
   Bar,
   BarTimeframe,
   BarsResponse,
   QuotesResponse,
   SubscriptionsResponse,
-} from '../../../shared/src';
-import type { PriceProvider } from '../providers/PriceProvider';
-import type { QuoteCache } from '../services/QuoteCache';
-import type { PriceStreamHub } from '../services/PriceStreamHub';
+} from "../../../shared/src";
+import type { PriceProvider } from "../providers/PriceProvider";
+import type { QuoteCache } from "../services/QuoteCache";
+import type { PriceStreamHub } from "../services/PriceStreamHub";
 
 // -----------------------------------------------------------------------------
 // REST endpoints. These are the only HTTP routes the frontend needs:
@@ -32,34 +33,39 @@ interface BarsCacheEntry {
 }
 
 const VALID_TIMEFRAMES: readonly BarTimeframe[] = [
-  '1Min',
-  '5Min',
-  '15Min',
-  '1Hour',
-  '1Day',
+  "1Min",
+  "5Min",
+  "15Min",
+  "1Hour",
+  "1Day",
 ];
 
 export function createQuotesRouter(deps: RouteDeps): Router {
   const router = Router();
   const barsCache = new Map<string, BarsCacheEntry>();
 
-  router.get('/quotes', async (req: Request, res: Response) => {
+  router.get("/quotes", async (req: Request, res: Response) => {
     try {
-      const raw = String(req.query.symbols ?? '');
+      const raw = String(req.query.symbols ?? "");
       const symbols = raw
-        .split(',')
+        .split(",")
         .map((s) => s.trim().toUpperCase())
         .filter(Boolean);
       if (symbols.length === 0) {
-        return res.status(400).json({ error: 'symbols query param required' });
+        return res.status(400).json({ error: "symbols query param required" });
       }
 
       const quotes = await deps.cache.getMany(symbols);
 
       // Eagerly ensure those symbols are also streaming. Cheap when they're
-      // already subscribed; kicks off the WS subscribe otherwise.
-      await deps.hub.ensureSubscribed(symbols).catch((err) => {
-        console.warn('ensureSubscribed failed:', (err as Error).message);
+      // already subscribed; kicks off the WS subscribe otherwise. We don't
+      // let a subscribe failure block the snapshot response, but per
+      // CLAUDE.md rule 5 the fallback is still logged.
+      await deps.hub.ensureSubscribed(symbols).catch((err: unknown) => {
+        log.warn(
+          { err, operation: "hub.ensureSubscribed", symbols },
+          "ensureSubscribed failed (non-fatal; snapshot still returned)",
+        );
       });
 
       const body: QuotesResponse = {
@@ -69,30 +75,30 @@ export function createQuotesRouter(deps: RouteDeps): Router {
       };
       return res.json(body);
     } catch (err) {
-      console.error('[GET /quotes]', err);
+      log.error(
+        { err, route: "GET /quotes" },
+        "ERROR GET /quotes failed (returning empty snapshot with 502)",
+      );
       const body: QuotesResponse = {
         quotes: {},
-        providerStatus: 'unavailable',
+        providerStatus: "unavailable",
         provider: deps.provider.name,
       };
       return res.status(502).json(body);
     }
   });
 
-  router.get('/bars', async (req: Request, res: Response) => {
+  router.get("/bars", async (req: Request, res: Response) => {
     try {
-      const symbol = String(req.query.symbol ?? '').toUpperCase();
-      const timeframe = String(req.query.timeframe ?? '1Day') as BarTimeframe;
-      const limit = Math.min(
-        Math.max(Number(req.query.limit ?? 90), 1),
-        1000,
-      );
+      const symbol = String(req.query.symbol ?? "").toUpperCase();
+      const timeframe = String(req.query.timeframe ?? "1Day") as BarTimeframe;
+      const limit = Math.min(Math.max(Number(req.query.limit ?? 90), 1), 1000);
       if (!symbol) {
-        return res.status(400).json({ error: 'symbol query param required' });
+        return res.status(400).json({ error: "symbol query param required" });
       }
       if (!VALID_TIMEFRAMES.includes(timeframe)) {
         return res.status(400).json({
-          error: `invalid timeframe; one of ${VALID_TIMEFRAMES.join(', ')}`,
+          error: `invalid timeframe; one of ${VALID_TIMEFRAMES.join(", ")}`,
         });
       }
 
@@ -119,12 +125,15 @@ export function createQuotesRouter(deps: RouteDeps): Router {
       };
       return res.json(body);
     } catch (err) {
-      console.error('[GET /bars]', err);
+      log.error(
+        { err, route: "GET /bars", query: req.query },
+        "ERROR GET /bars failed",
+      );
       return res.status(502).json({ error: (err as Error).message });
     }
   });
 
-  router.post('/subscriptions', async (req: Request, res: Response) => {
+  router.post("/subscriptions", async (req: Request, res: Response) => {
     try {
       const body = (req.body ?? {}) as {
         symbols?: unknown;
@@ -132,26 +141,29 @@ export function createQuotesRouter(deps: RouteDeps): Router {
       };
       const raw = body.symbols;
       const list = Array.isArray(raw)
-        ? raw.filter((x): x is string => typeof x === 'string')
+        ? raw.filter((x): x is string => typeof x === "string")
         : [];
       const replace = body.replace === true;
       const subscribed = await deps.hub.ensureSubscribed(list, { replace });
       const out: SubscriptionsResponse = { subscribed };
       return res.json(out);
     } catch (err) {
-      console.error('[POST /subscriptions]', err);
+      log.error(
+        { err, route: "POST /subscriptions" },
+        "ERROR POST /subscriptions failed",
+      );
       return res.status(502).json({ error: (err as Error).message });
     }
   });
 
-  router.get('/subscriptions', (_req: Request, res: Response) => {
+  router.get("/subscriptions", (_req: Request, res: Response) => {
     const body: SubscriptionsResponse = {
       subscribed: deps.hub.listSubscriptions(),
     };
     res.json(body);
   });
 
-  router.get('/health', (_req: Request, res: Response) => {
+  router.get("/health", (_req: Request, res: Response) => {
     res.json({
       ok: true,
       provider: deps.provider.name,

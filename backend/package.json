@@ -7,17 +7,20 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
-    "start": "node dist/backend/src/server.js"
+    "start": "node dist/backend/src/server.js",
+    "fetch-trades": "tsx scripts/fetchTrades.ts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@chongbei/web-basics": "file:../../chongbei_personal/packages/web-basics/chongbei-web-basics-0.5.1.tgz",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "pg": "^8.20.0",
+    "pino": "^9.0.0",
     "socket.io": "^4.8.3",
     "ws": "^8.20.0"
   },

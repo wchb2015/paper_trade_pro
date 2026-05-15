@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Quote } from '../../../shared/src';
-import { config } from '../config';
-import { priceClient } from '../lib/priceClient';
-import { getStockMeta } from '../lib/seedStocks';
-import type { Market, StockSnapshot } from '../lib/types';
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { Quote } from "../../../shared/src";
+import { config } from "../config";
+import { priceClient } from "../lib/priceClient";
+import { getStockMeta } from "../lib/seedStocks";
+import type { Market, StockSnapshot } from "../lib/types";
 
 // -----------------------------------------------------------------------------
 // useMarket: the only place the UI touches price data. Given a set of tickers
@@ -19,7 +19,7 @@ import type { Market, StockSnapshot } from '../lib/types';
 export interface UseMarketResult {
   market: Market;
   liveConnected: boolean;
-  providerStatus: 'live' | 'stale' | 'unavailable';
+  providerStatus: "live" | "stale" | "unavailable";
   provider: string;
   /** Non-null when the latest snapshot fetch failed. */
   error: string | null;
@@ -51,13 +51,17 @@ function quoteToSnapshot(
     prevClose: q.prevClose,
     volume: q.volume,
     lastUpdated: q.timestamp,
-    freshness: 'live',
+    freshness: "live",
   };
 }
 
-function applyTick(prior: StockSnapshot, price: number, ts: number): StockSnapshot {
+function applyTick(
+  prior: StockSnapshot,
+  price: number,
+  ts: number,
+): StockSnapshot {
   if (prior.price === price) {
-    return { ...prior, lastUpdated: ts, freshness: 'live' };
+    return { ...prior, lastUpdated: ts, freshness: "live" };
   }
   return {
     ...prior,
@@ -65,16 +69,17 @@ function applyTick(prior: StockSnapshot, price: number, ts: number): StockSnapsh
     price,
     history: [...prior.history, price].slice(-config.sparklinePoints),
     lastUpdated: ts,
-    freshness: 'live',
+    freshness: "live",
   };
 }
 
 export function useMarket(symbols: string[]): UseMarketResult {
   const [market, setMarket] = useState<Market>({});
   const [liveConnected, setLiveConnected] = useState(false);
-  const [providerStatus, setProviderStatus] =
-    useState<'live' | 'stale' | 'unavailable'>('unavailable');
-  const [provider, setProvider] = useState<string>('');
+  const [providerStatus, setProviderStatus] = useState<
+    "live" | "stale" | "unavailable"
+  >("unavailable");
+  const [provider, setProvider] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
 
   // Stable sorted list so useEffect dependencies fire only on real changes.
@@ -82,11 +87,11 @@ export function useMarket(symbols: string[]): UseMarketResult {
     () =>
       Array.from(new Set(symbols.map((s) => s.toUpperCase())))
         .sort()
-        .join(','),
+        .join(","),
     [symbols],
   );
   const symbolList = useMemo(
-    () => (symbolKey ? symbolKey.split(',') : []),
+    () => (symbolKey ? symbolKey.split(",") : []),
     [symbolKey],
   );
 
@@ -142,18 +147,22 @@ export function useMarket(symbols: string[]): UseMarketResult {
             // Keep what we had — provider didn't return this symbol (e.g. an
             // invalid ticker the user typed). Mark stale so the UI can show
             // a hint.
-            next[sym] = { ...prev[sym], freshness: 'stale' };
+            next[sym] = { ...prev[sym], freshness: "stale" };
           }
         }
         return next;
       });
     } catch (err) {
-      console.error('loadSnapshots failed:', err);
+      // api() already toasted the user-visible error with a ref id. We
+      // additionally surface it in `error` state + mark symbols as
+      // freshness:'error' so the UI renders an inline hint. No
+      // console.error needed (CLAUDE.md rule 10: failed fetches must log
+      // detailed errors — the toast is our client log surface).
       setError((err as Error).message);
       setMarket((prev) => {
         const next: Market = { ...prev };
         for (const sym of symbolList) {
-          if (next[sym]) next[sym] = { ...next[sym], freshness: 'error' };
+          if (next[sym]) next[sym] = { ...next[sym], freshness: "error" };
         }
         return next;
       });
@@ -163,11 +172,14 @@ export function useMarket(symbols: string[]): UseMarketResult {
   useEffect(() => {
     void loadSnapshots();
     if (symbolList.length > 0) {
-      priceClient
-        .ensureSubscribed(symbolList)
-        .catch((err: unknown) =>
-          console.warn('ensureSubscribed failed:', (err as Error).message),
-        );
+      // ensureSubscribed failure is non-fatal: snapshots still work via
+      // REST polling, we just won't get live ticks for these symbols until
+      // the next call. api() already toasted — we reflect the state as
+      // 'unavailable' via the provider-status handler. Don't silently
+      // swallow: capture into `error` so the UI can surface it too.
+      priceClient.ensureSubscribed(symbolList).catch((err: unknown) => {
+        setError((err as Error).message);
+      });
     }
   }, [loadSnapshots, symbolList]);
 
@@ -189,10 +201,10 @@ export function useMarket(symbols: string[]): UseMarketResult {
         const next: Market = { ...prev };
         for (const [sym, snap] of Object.entries(prev)) {
           if (
-            snap.freshness === 'live' &&
+            snap.freshness === "live" &&
             now - snap.lastUpdated > config.staleAfterMs
           ) {
-            next[sym] = { ...snap, freshness: 'stale' };
+            next[sym] = { ...snap, freshness: "stale" };
             changed = true;
           }
         }
@@ -203,10 +215,11 @@ export function useMarket(symbols: string[]): UseMarketResult {
   }, []);
 
   // Consolidated provider status: unavailable if socket is down.
-  const derivedProviderStatus: 'live' | 'stale' | 'unavailable' = useMemo(() => {
-    if (!liveConnected) return 'unavailable';
-    return providerStatus;
-  }, [liveConnected, providerStatus]);
+  const derivedProviderStatus: "live" | "stale" | "unavailable" =
+    useMemo(() => {
+      if (!liveConnected) return "unavailable";
+      return providerStatus;
+    }, [liveConnected, providerStatus]);
 
   return {
     market,

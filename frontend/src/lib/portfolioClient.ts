@@ -1,3 +1,4 @@
+import { api } from "@chongbei/web-basics/client";
 import type {
   AddAlertInput,
   FillOrderInput,
@@ -6,93 +7,79 @@ import type {
   ResetFundsInput,
   ToggleWatchInput,
   TriggerAlertInput,
-} from '../../../shared/src';
-import { config } from '../config';
+} from "../../../shared/src";
+import { config } from "../config";
 
 // -----------------------------------------------------------------------------
 // Thin REST wrapper around the backend's /api portfolio endpoints. Every
 // mutating call returns the whole Portfolio so usePortfolio can replace its
 // state atomically — same shape the old localStorage hook used internally.
+//
+// Networking goes through `api<T>()` from @chongbei/web-basics: any non-2xx
+// throws an ApiError with `{ status, code, ref, message }` AND fires a toast
+// via the `configureApi` wiring in main.tsx. Callers catch to record the
+// message in local state but don't need to toast themselves.
 // -----------------------------------------------------------------------------
 
-async function request<T>(
-  path: string,
-  init?: RequestInit,
-): Promise<T> {
-  const res = await fetch(`${config.backendUrl}${path}`, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers ?? {}),
-    },
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    // Try to surface the server's `{error: "..."}` if it sent one.
-    let message = body;
-    try {
-      const parsed = JSON.parse(body) as { error?: string };
-      if (parsed && typeof parsed.error === 'string') message = parsed.error;
-    } catch {
-      /* fall through */
-    }
-    throw new Error(`${path} ${res.status}: ${message}`);
-  }
-  return (await res.json()) as T;
+function url(path: string): string {
+  return `${config.backendUrl}${path}`;
 }
 
 export const portfolioClient = {
   get(): Promise<Portfolio> {
-    return request<Portfolio>('/api/portfolio');
+    return api<Portfolio>(url("/api/portfolio"));
   },
   placeOrder(body: PlaceOrderInput): Promise<Portfolio> {
-    return request<Portfolio>('/api/orders', {
-      method: 'POST',
+    return api<Portfolio>(url("/api/orders"), {
+      method: "POST",
       body: JSON.stringify(body),
     });
   },
   cancelOrder(id: string): Promise<Portfolio> {
-    return request<Portfolio>(`/api/orders/${encodeURIComponent(id)}/cancel`, {
-      method: 'POST',
+    return api<Portfolio>(url(`/api/orders/${encodeURIComponent(id)}/cancel`), {
+      method: "POST",
     });
   },
   fillOrder(id: string, body: FillOrderInput): Promise<Portfolio> {
-    return request<Portfolio>(`/api/orders/${encodeURIComponent(id)}/fill`, {
-      method: 'POST',
+    return api<Portfolio>(url(`/api/orders/${encodeURIComponent(id)}/fill`), {
+      method: "POST",
       body: JSON.stringify(body),
     });
   },
   addAlert(body: AddAlertInput): Promise<Portfolio> {
-    return request<Portfolio>('/api/alerts', {
-      method: 'POST',
+    return api<Portfolio>(url("/api/alerts"), {
+      method: "POST",
       body: JSON.stringify(body),
     });
   },
   toggleAlert(id: string): Promise<Portfolio> {
-    return request<Portfolio>(`/api/alerts/${encodeURIComponent(id)}/toggle`, {
-      method: 'POST',
+    return api<Portfolio>(url(`/api/alerts/${encodeURIComponent(id)}/toggle`), {
+      method: "POST",
     });
   },
   triggerAlert(id: string, body: TriggerAlertInput): Promise<Portfolio> {
-    return request<Portfolio>(`/api/alerts/${encodeURIComponent(id)}/trigger`, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    });
+    return api<Portfolio>(
+      url(`/api/alerts/${encodeURIComponent(id)}/trigger`),
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    );
   },
   removeAlert(id: string): Promise<Portfolio> {
-    return request<Portfolio>(`/api/alerts/${encodeURIComponent(id)}`, {
-      method: 'DELETE',
+    return api<Portfolio>(url(`/api/alerts/${encodeURIComponent(id)}`), {
+      method: "DELETE",
     });
   },
   toggleWatch(body: ToggleWatchInput): Promise<Portfolio> {
-    return request<Portfolio>('/api/watchlist/toggle', {
-      method: 'POST',
+    return api<Portfolio>(url("/api/watchlist/toggle"), {
+      method: "POST",
       body: JSON.stringify(body),
     });
   },
   reset(body: ResetFundsInput = {}): Promise<Portfolio> {
-    return request<Portfolio>('/api/portfolio/reset', {
-      method: 'POST',
+    return api<Portfolio>(url("/api/portfolio/reset"), {
+      method: "POST",
       body: JSON.stringify(body),
     });
   },

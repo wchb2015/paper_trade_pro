@@ -1,5 +1,6 @@
-import { Pool, type PoolConfig, types } from 'pg';
-import { loadConfig } from './config';
+import { Pool, type PoolConfig, types } from "pg";
+import { log } from "@chongbei/web-basics/server";
+import { loadConfig } from "./config";
 
 // -----------------------------------------------------------------------------
 // Single shared pg Pool for the process. Neon's pooler handles connection
@@ -37,10 +38,14 @@ export function getPool(): Pool {
 
   pool = new Pool(poolConfig);
 
-  pool.on('error', (err) => {
+  pool.on("error", (err) => {
     // Pool-level errors are rare but fatal for the bad client — we log and
-    // let pg replace the connection on next checkout.
-    console.error('[db] idle client error:', err.message);
+    // let pg replace the connection on next checkout. Satisfies
+    // CLAUDE.md rule 9 (database connection failures must be logged).
+    log.error(
+      { err, operation: "pg.pool.idle-client" },
+      "EXCEPTION pg pool idle client error",
+    );
   });
 
   return pool;
@@ -48,19 +53,24 @@ export function getPool(): Pool {
 
 /** Run `fn` inside a transaction. Commits on success, rolls back on throw. */
 export async function withTransaction<T>(
-  fn: (client: import('pg').PoolClient) => Promise<T>,
+  fn: (client: import("pg").PoolClient) => Promise<T>,
 ): Promise<T> {
   const client = await getPool().connect();
   try {
-    await client.query('BEGIN');
+    await client.query("BEGIN");
     const result = await fn(client);
-    await client.query('COMMIT');
+    await client.query("COMMIT");
     return result;
   } catch (err) {
     try {
-      await client.query('ROLLBACK');
-    } catch {
-      /* swallow — the original error is more useful */
+      await client.query("ROLLBACK");
+    } catch (rollbackErr: unknown) {
+      // Log the rollback failure but re-throw the original error — it has
+      // the useful stack for the caller. Rule 9: rollback reasons logged.
+      log.error(
+        { err: rollbackErr, originalErr: err, operation: "pg.rollback" },
+        "ERROR pg ROLLBACK failed after transaction error",
+      );
     }
     throw err;
   } finally {

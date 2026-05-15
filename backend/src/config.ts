@@ -1,4 +1,5 @@
-import { FREE_TIER, PROVIDERS, type ProviderName } from '../../shared/src';
+import path from "node:path";
+import { FREE_TIER, PROVIDERS, type ProviderName } from "../../shared/src";
 
 // -----------------------------------------------------------------------------
 // Typed config. Secrets + deployment knobs come from .env. Rate limits,
@@ -21,18 +22,18 @@ function optionalEnv(name: string): string | undefined {
 }
 
 function parseProvider(raw: string | undefined): ProviderName {
-  const value = (raw ?? 'alpaca').toLowerCase();
+  const value = (raw ?? "alpaca").toLowerCase();
   if (!(PROVIDERS as readonly string[]).includes(value)) {
     throw new Error(
-      `Unknown PRICE_PROVIDER="${value}". Valid: ${PROVIDERS.join(', ')}`,
+      `Unknown PRICE_PROVIDER="${value}". Valid: ${PROVIDERS.join(", ")}`,
     );
   }
   return value as ProviderName;
 }
 
-function parseFeed(raw: string | undefined): 'iex' | 'sip' {
-  const v = (raw ?? 'iex').toLowerCase();
-  if (v !== 'iex' && v !== 'sip') {
+function parseFeed(raw: string | undefined): "iex" | "sip" {
+  const v = (raw ?? "iex").toLowerCase();
+  if (v !== "iex" && v !== "sip") {
     throw new Error(`Unknown ALPACA_FEED="${v}". Valid: iex, sip`);
   }
   return v;
@@ -46,9 +47,23 @@ export interface AppConfig {
     keyId: string;
     secretKey: string;
     /** IEX is free; SIP requires a paid subscription. */
-    feed: 'iex' | 'sip';
+    feed: "iex" | "sip";
     restBaseUrl: string;
     wsUrl: string;
+  };
+  /**
+   * ReplayProvider settings. Only read when provider === 'replay'. Defaults
+   * are permissive so switching providers is a one-env-var toggle.
+   */
+  replay: {
+    /** Which folder under cacheDir to read (YYYY-MM-DD). */
+    date: string;
+    /** 1 = real-time, 10 = 10× faster, 0 = as-fast-as-possible. */
+    speed: number;
+    /** Reopen all readers from start after EOD so the feed never dies. */
+    loop: boolean;
+    /** Absolute path to the NDJSON root — usually backend/.replay-cache. */
+    cacheDir: string;
   };
   /** Postgres connection string (e.g. Neon pooled URL). */
   databaseUrl: string;
@@ -74,29 +89,37 @@ let cached: AppConfig | null = null;
 export function loadConfig(): AppConfig {
   if (cached) return cached;
 
-  const provider = parseProvider(optionalEnv('PRICE_PROVIDER'));
-  const feed = parseFeed(optionalEnv('ALPACA_FEED'));
+  const provider = parseProvider(optionalEnv("PRICE_PROVIDER"));
+  const feed = parseFeed(optionalEnv("ALPACA_FEED"));
 
   const cfg: AppConfig = {
-    port: Number(optionalEnv('PORT') ?? 4000),
-    frontendOrigin: optionalEnv('FRONTEND_ORIGIN') ?? 'http://localhost:5173',
+    port: Number(optionalEnv("PORT") ?? 4000),
+    frontendOrigin: optionalEnv("FRONTEND_ORIGIN") ?? "http://localhost:5173",
     provider,
     alpaca: {
-      keyId: requireEnv('APCA_KEY_ID'),
-      secretKey: requireEnv('APCA_SECRET_KEY'),
+      keyId: requireEnv("APCA_KEY_ID"),
+      secretKey: requireEnv("APCA_SECRET_KEY"),
       feed,
       // Data endpoints are the same for paper + live accounts.
       restBaseUrl:
-        optionalEnv('ALPACA_DATA_URL') ?? 'https://data.alpaca.markets',
+        optionalEnv("ALPACA_DATA_URL") ?? "https://data.alpaca.markets",
       wsUrl:
-        optionalEnv('ALPACA_STREAM_URL') ??
+        optionalEnv("ALPACA_STREAM_URL") ??
         `wss://stream.data.alpaca.markets/v2/${feed}`,
     },
-    databaseUrl: requireEnv('DATABASE_URL'),
+    databaseUrl: requireEnv("DATABASE_URL"),
     currentUserId:
-      optionalEnv('CURRENT_USER_ID') ?? '3f7c9b2e-8a41-4d6c-b5f3-1e9a72c4d8ab',
-    initialCash: Number(optionalEnv('INITIAL_CASH') ?? 100_000),
+      optionalEnv("CURRENT_USER_ID") ?? "3f7c9b2e-8a41-4d6c-b5f3-1e9a72c4d8ab",
+    initialCash: Number(optionalEnv("INITIAL_CASH") ?? 100_000),
     limits: FREE_TIER,
+    replay: {
+      date: optionalEnv("REPLAY_DATE") ?? "2026-05-01",
+      speed: Number(optionalEnv("REPLAY_SPEED") ?? 1),
+      loop: (optionalEnv("REPLAY_LOOP") ?? "true").toLowerCase() !== "false",
+      cacheDir:
+        optionalEnv("REPLAY_CACHE_DIR") ??
+        path.resolve(__dirname, "..", ".replay-cache"),
+    },
   };
 
   cached = cfg;
