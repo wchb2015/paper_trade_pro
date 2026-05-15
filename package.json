@@ -1,0 +1,14 @@
+{
+  "name": "paper-trade-pro",
+  "version": "1.0.0",
+  "description": "Paper trading app (PERN + Socket.io)",
+  "private": true,
+  "scripts": {
+    "install:all": "npm --prefix frontend install --include=dev && npm --prefix backend install --include=dev",
+    "build:all": "cd frontend && npm run build && cd ../backend && npm run build",
+    "pm2:start": "pm2 startOrReload ecosystem.config.cjs",
+    "deploy": "npm run install:all && npm run build:all && npm run pm2:start",
+    "lint": "cd frontend && npm run lint"
+  }
+}
+
