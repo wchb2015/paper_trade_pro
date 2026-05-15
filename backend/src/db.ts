@@ -1,6 +1,8 @@
 import { Pool, type PoolConfig, types } from "pg";
-import { log } from "@chongbei/web-basics/server";
+import { getLogger } from "@chongbei/web-basics/server";
 import { loadConfig } from "./config";
+
+const log = getLogger("db");
 
 // -----------------------------------------------------------------------------
 // Single shared pg Pool for the process. Neon's pooler handles connection

@@ -1,5 +1,7 @@
 import { Router, type Request, type Response } from "express";
-import { log } from "@chongbei/web-basics/server";
+import { getLogger } from "@chongbei/web-basics/server";
+
+const log = getLogger("routes.quotes");
 import type {
   Bar,
   BarTimeframe,

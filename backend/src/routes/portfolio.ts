@@ -1,5 +1,7 @@
 import { Router, type Request, type Response } from "express";
-import { log } from "@chongbei/web-basics/server";
+import { getLogger } from "@chongbei/web-basics/server";
+
+const log = getLogger("routes.portfolio");
 
 // Express 5 widens `req.params.id` to `string | string[] | undefined`, even
 // for routes where the pattern obviously yields a single string. Narrow it

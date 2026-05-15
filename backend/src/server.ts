@@ -1,16 +1,23 @@
 import path from "node:path";
 import dotenv from "dotenv";
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
+// Bootstrap the singleton logger BEFORE any other module that calls
+// getLogger("...") at module scope (db.ts, routes/*, services/*).
+// Side-effect import — must come before those imports so the singleton
+// gets built with our service name instead of defaults.
+import "./loggerBootstrap";
 import express from "express";
 import http from "http";
 import cors from "cors";
 import { Server } from "socket.io";
 import {
-  log,
+  getLogger,
   attachRef,
   errorHandler,
   getDefaultLogger,
 } from "@chongbei/web-basics/server";
+
+const log = getLogger("server");
 
 import type {
   ClientToServerEvents,

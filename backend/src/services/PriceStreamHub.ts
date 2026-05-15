@@ -1,5 +1,7 @@
 import type { Server } from "socket.io";
-import { log } from "@chongbei/web-basics/server";
+import { getLogger } from "@chongbei/web-basics/server";
+
+const log = getLogger("services.PriceStreamHub");
 import {
   SOCKET_EVENTS,
   type PriceTickPayload,
