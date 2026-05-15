@@ -3,7 +3,7 @@ const ports = require("./ports.cjs");
 module.exports = {
   apps: [
     {
-      name: `${ports.BACKEND_PORT}_paper-trade-pro-backend`,
+      name: `${ports.BACKEND_PORT}_paper_trade_pro_backend`,
       cwd: "./backend",
       script: "dist/backend/src/server.js",
       instances: 1,

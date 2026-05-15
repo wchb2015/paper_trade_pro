@@ -2,7 +2,25 @@
 import fs from "node:fs";
 import path from "node:path";
 import dotenv from "dotenv";
-dotenv.config({ path: path.resolve(__dirname, "../../.env") });
+
+// Walk up to find the repo-root .env. tsx runs from backend/scripts (depth 2);
+// compiled runs from backend/dist/backend/scripts (depth 4) because tsconfig's
+// rootDir is the repo root. A static relative literal can't satisfy both.
+function resolveDotEnv(): string {
+  let dir = __dirname;
+  while (true) {
+    const candidate = path.join(dir, ".env");
+    if (fs.existsSync(candidate)) return candidate;
+    const parent = path.dirname(dir);
+    if (parent === dir) {
+      throw new Error(
+        `FATAL: could not locate .env walking up from ${__dirname}`,
+      );
+    }
+    dir = parent;
+  }
+}
+dotenv.config({ path: resolveDotEnv() });
 
 // -----------------------------------------------------------------------------
 // fetchTrades.ts

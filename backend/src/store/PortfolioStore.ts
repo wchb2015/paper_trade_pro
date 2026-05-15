@@ -339,6 +339,9 @@ export class PortfolioStore {
         throw new Error(`market orders require fillPrice`);
       ensurePositiveNumber('fillPrice', input.fillPrice);
     }
+    if (input.innerType != null && !isOrderType(input.innerType)) {
+      throw new Error(`invalid innerType "${String(input.innerType)}"`);
+    }
 
     const ticker = input.ticker.toUpperCase();
 

@@ -1,4 +1,5 @@
 import WebSocket from 'ws';
+import { getLogger } from '@chongbei/web-basics/server';
 import type { Bar, BarTimeframe, Quote } from '../../../shared/src';
 import type { AppConfig } from '../config';
 import type {
@@ -6,6 +7,8 @@ import type {
   PriceStreamHandlers,
   UnsubscribeFn,
 } from './PriceProvider';
+
+const log = getLogger('providers.AlpacaProvider');
 
 // -----------------------------------------------------------------------------
 // Alpaca implementation of PriceProvider.
@@ -94,7 +97,17 @@ export class AlpacaProvider implements PriceProvider {
 
     const res = await fetch(url, { headers: this.restHeaders() });
     if (!res.ok) {
-      const body = await res.text().catch(() => '');
+      const body = await res.text().catch((readErr: unknown) => {
+        log.warn(
+          {
+            err: readErr,
+            operation: 'alpaca.snapshots.readErrorBody',
+            status: res.status,
+          },
+          'failed to read Alpaca snapshots error body',
+        );
+        return '';
+      });
       throw new Error(
         `Alpaca snapshots failed: ${res.status} ${res.statusText} ${body}`,
       );
@@ -134,7 +147,17 @@ export class AlpacaProvider implements PriceProvider {
 
     const res = await fetch(url, { headers: this.restHeaders() });
     if (!res.ok) {
-      const body = await res.text().catch(() => '');
+      const body = await res.text().catch((readErr: unknown) => {
+        log.warn(
+          {
+            err: readErr,
+            operation: 'alpaca.bars.readErrorBody',
+            status: res.status,
+          },
+          'failed to read Alpaca bars error body',
+        );
+        return '';
+      });
       throw new Error(
         `Alpaca bars failed: ${res.status} ${res.statusText} ${body}`,
       );

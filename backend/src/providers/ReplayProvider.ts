@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { getLogger } from "@chongbei/web-basics/server";
 import type { Bar, BarTimeframe, Quote } from "../../../shared/src";
 import type { AppConfig } from "../config";
 import type {
@@ -9,6 +10,8 @@ import type {
 } from "./PriceProvider";
 import { openNdjson, type LineReader } from "./replay/ndjsonLineReader";
 import { MinHeap } from "./replay/minHeap";
+
+const log = getLogger("providers.ReplayProvider");
 
 // -----------------------------------------------------------------------------
 // ReplayProvider
@@ -277,6 +280,10 @@ export class ReplayProvider implements PriceProvider {
       try {
         await this.drainDue();
       } catch (err) {
+        log.error(
+          { err, operation: "replay.drainDue" },
+          "EXCEPTION replay scheduler tick failed",
+        );
         this.handlers?.onStatusChange(
           "error",
           `replay scheduler: ${(err as Error).message}`,

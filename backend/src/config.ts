@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { FREE_TIER, PROVIDERS, type ProviderName } from "../../shared/src";
 
@@ -10,7 +11,26 @@ import { FREE_TIER, PROVIDERS, type ProviderName } from "../../shared/src";
 // startup so we fail fast instead of binding to a wrong port.
 // -----------------------------------------------------------------------------
 
-const ports = require("../../ports.cjs") as {
+// Walk up from __dirname to locate ports.cjs at the repo root. A static
+// relative literal can't work for both runtimes: tsx runs the .ts source
+// (2 levels deep) while node runs dist/backend/src/config.js (4 levels deep)
+// because tsconfig's rootDir is the repo root.
+function resolvePortsCjs(): string {
+  let dir = __dirname;
+  while (true) {
+    const candidate = path.join(dir, "ports.cjs");
+    if (fs.existsSync(candidate)) return candidate;
+    const parent = path.dirname(dir);
+    if (parent === dir) {
+      throw new Error(
+        `FATAL: could not locate ports.cjs walking up from ${__dirname}`,
+      );
+    }
+    dir = parent;
+  }
+}
+
+const ports = require(resolvePortsCjs()) as {
   BACKEND_PORT: number;
   FRONTEND_DEV_PORT: number;
   BACKEND_URL: string;

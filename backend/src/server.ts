@@ -1,6 +1,26 @@
+import fs from "node:fs";
 import path from "node:path";
 import dotenv from "dotenv";
-dotenv.config({ path: path.resolve(__dirname, "../../.env") });
+
+// Walk up from __dirname to find the repo-root .env. Source runs from
+// backend/src (depth 2 below repo root); compiled runs from
+// backend/dist/backend/src (depth 4) because tsconfig's rootDir is the repo
+// root. A static `../../.env` literal works for one but not the other.
+function resolveDotEnv(): string {
+  let dir = __dirname;
+  while (true) {
+    const candidate = path.join(dir, ".env");
+    if (fs.existsSync(candidate)) return candidate;
+    const parent = path.dirname(dir);
+    if (parent === dir) {
+      throw new Error(
+        `FATAL: could not locate .env walking up from ${__dirname}`,
+      );
+    }
+    dir = parent;
+  }
+}
+dotenv.config({ path: resolveDotEnv() });
 // Bootstrap the singleton logger BEFORE any other module that calls
 // getLogger("...") at module scope (db.ts, routes/*, services/*).
 // Side-effect import — must come before those imports so the singleton
