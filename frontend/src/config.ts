@@ -4,9 +4,18 @@
 
 const meta = import.meta.env as Record<string, string | undefined>;
 
+const backendUrl = meta['VITE_BACKEND_URL'];
+if (!backendUrl) {
+  const msg =
+    'FATAL: VITE_BACKEND_URL is required but was not provided. ' +
+    'Set it in your .env (repo root, see .env.example) before building/running the frontend.';
+  console.error(msg);
+  throw new Error(msg);
+}
+
 export const config = {
   /** URL of the paper-trade-pro backend. */
-  backendUrl: meta['VITE_BACKEND_URL'] ?? 'http://localhost:4000',
+  backendUrl,
   /**
    * How often we poll the backend's /api/quotes as a belt-and-suspenders
    * refresh of bid/ask/dayHigh/etc. (the socket only delivers trade price).

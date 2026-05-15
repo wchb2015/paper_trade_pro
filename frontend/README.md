@@ -8,12 +8,14 @@ talks to a market data provider directly.
 
 ```bash
 npm install
-cp .env.example .env.local   # optional — all vars have defaults
+cp ../.env.example ../.env   # required — at minimum VITE_BACKEND_URL must be set
 npm run dev
 ```
 
-The dev server runs on `http://localhost:5173` and expects the backend at
-`http://localhost:4000`. Override via `VITE_BACKEND_URL` in `.env.local`.
+The dev server runs on `http://localhost:5173`. `VITE_BACKEND_URL` is
+required and must point at the backend (e.g. `http://localhost:4000` for
+local dev); the frontend throws at load time if it is missing. Vite reads
+the env from the repo root (`envDir: '..'` in `vite.config.ts`).
 
 ## Scripts
 
@@ -29,7 +31,7 @@ setting these in `.env.local` (see [.env.example](.env.example)):
 
 | Var | Default | Purpose |
 | --- | --- | --- |
-| `VITE_BACKEND_URL` | `http://localhost:4000` | Backend REST + socket origin |
+| `VITE_BACKEND_URL` | **required** | Backend REST + socket origin |
 | `VITE_SNAPSHOT_REFRESH_MS` | `30000` | Interval for re-fetching snapshots to refresh bid/ask/OHLC |
 | `VITE_STALE_AFTER_MS` | `60000` | A symbol with no tick for this long renders as "stale" |
 
