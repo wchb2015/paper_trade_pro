@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Quote } from "../../../shared/src";
+import type { Quote, UnavailableReason } from "../../../shared/src";
 import { config } from "../config";
 import { priceClient } from "../lib/priceClient";
 import { getStockMeta } from "../lib/seedStocks";
@@ -16,13 +16,36 @@ import type { Market, StockSnapshot } from "../lib/types";
 //   5. Marks symbols as 'stale' if no tick arrives within STALE_AFTER_MS.
 // -----------------------------------------------------------------------------
 
+/**
+ * Anchor for the running replay clock. The frontend extrapolates each
+ * `Date.now()` render to:
+ *   simNow = simTimestamp + (Date.now() - wallTimestamp) * speed
+ * and re-anchors on every replay tick so drift stays bounded by tick rate.
+ */
+export interface ReplayClockAnchor {
+  /** Simulated market time (epoch ms) at the moment of the most recent tick. */
+  simTimestamp: number;
+  /** Wall-clock time (Date.now()) when that tick arrived. */
+  wallTimestamp: number;
+  /** Playback rate; 1 = real-time, 10 = 10x, 0 = ASAP. */
+  speed: number;
+}
+
 export interface UseMarketResult {
   market: Market;
+  /** Symbols the backend can't price right now, with reason. Empty when none. */
+  unavailable: Record<string, UnavailableReason>;
   liveConnected: boolean;
   providerStatus: "live" | "stale" | "unavailable";
   provider: string;
   /** Non-null when the latest snapshot fetch failed. */
   error: string | null;
+  /**
+   * Set only when the active provider is replay AND we've received at least
+   * one tick. Callers extrapolate forward via `useReplayClock` (or directly
+   * with the formula above) to render the running clock.
+   */
+  replayClock: ReplayClockAnchor | null;
 }
 
 function quoteToSnapshot(
@@ -75,12 +98,23 @@ function applyTick(
 
 export function useMarket(symbols: string[]): UseMarketResult {
   const [market, setMarket] = useState<Market>({});
+  const [unavailable, setUnavailable] = useState<
+    Record<string, UnavailableReason>
+  >({});
   const [liveConnected, setLiveConnected] = useState(false);
   const [providerStatus, setProviderStatus] = useState<
     "live" | "stale" | "unavailable"
   >("unavailable");
   const [provider, setProvider] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
+  const [replaySpeed, setReplaySpeed] = useState<number | null>(null);
+  const [replayClock, setReplayClock] = useState<ReplayClockAnchor | null>(
+    null,
+  );
+  // Keep speed in a ref so onTick (declared once on mount) sees the latest
+  // value without needing to be re-bound on every status change.
+  const replaySpeedRef = useRef<number | null>(null);
+  replaySpeedRef.current = replaySpeed;
 
   // Stable sorted list so useEffect dependencies fire only on real changes.
   const symbolKey = useMemo(
@@ -112,10 +146,28 @@ export function useMarket(symbols: string[]): UseMarketResult {
             [tick.symbol]: applyTick(current, tick.price, tick.timestamp),
           };
         });
+        // Re-anchor the replay clock on every tick that carries a sim time.
+        // We don't gate by symbol — the global clock advances even for
+        // tickers the user isn't viewing. Use the most recent speed we got
+        // from a status payload (default 1 if we somehow saw a sim tick
+        // before any status).
+        if (tick.simTimestamp !== undefined) {
+          setReplayClock({
+            simTimestamp: tick.simTimestamp,
+            wallTimestamp: Date.now(),
+            speed: replaySpeedRef.current ?? 1,
+          });
+        }
       },
       onStatus: (status) => {
         setProviderStatus(status.status);
         setProvider(status.provider);
+        if (status.replaySpeed !== undefined) {
+          setReplaySpeed(status.replaySpeed);
+        } else {
+          setReplaySpeed(null);
+          setReplayClock(null);
+        }
       },
       onConnectionChange: (connected) => setLiveConnected(connected),
     });
@@ -129,6 +181,7 @@ export function useMarket(symbols: string[]): UseMarketResult {
   const loadSnapshots = useCallback(async (): Promise<void> => {
     if (symbolList.length === 0) {
       setMarket({});
+      setUnavailable({});
       return;
     }
     try {
@@ -152,6 +205,14 @@ export function useMarket(symbols: string[]): UseMarketResult {
         }
         return next;
       });
+
+      const fresh = response.unavailable ?? {};
+      const next: Record<string, UnavailableReason> = {};
+      for (const sym of symbolList) {
+        const u = fresh[sym];
+        if (u) next[sym] = u;
+      }
+      setUnavailable(next);
     } catch (err) {
       // api() already toasted the user-visible error with a ref id. We
       // additionally surface it in `error` state + mark symbols as
@@ -166,6 +227,7 @@ export function useMarket(symbols: string[]): UseMarketResult {
         }
         return next;
       });
+      setUnavailable({});
     }
   }, [symbolList]);
 
@@ -223,9 +285,11 @@ export function useMarket(symbols: string[]): UseMarketResult {
 
   return {
     market,
+    unavailable,
     liveConnected,
     providerStatus: derivedProviderStatus,
     provider,
     error,
+    replayClock,
   };
 }

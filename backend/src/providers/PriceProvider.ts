@@ -1,4 +1,9 @@
-import type { Bar, BarTimeframe, Quote } from '../../../shared/src';
+import type {
+  Bar,
+  BarTimeframe,
+  Quote,
+  UnavailableReason,
+} from '../../../shared/src';
 
 // -----------------------------------------------------------------------------
 // Provider abstraction. Everything the rest of the server knows about pricing
@@ -9,8 +14,17 @@ import type { Bar, BarTimeframe, Quote } from '../../../shared/src';
 
 export type UnsubscribeFn = () => void;
 
+/**
+ * Optional per-tick metadata that a provider may attach. Today only
+ * ReplayProvider sets `simTimestamp` (the historical clock the tick maps
+ * to in the original session) so the UI can render a running replay clock.
+ */
+export interface TickMeta {
+  simTimestamp?: number;
+}
+
 export interface PriceStreamHandlers {
-  onQuote: (quote: Quote) => void;
+  onQuote: (quote: Quote, meta?: TickMeta) => void;
   onStatusChange: (status: 'connected' | 'disconnected' | 'error', detail?: string) => void;
 }
 
@@ -44,4 +58,19 @@ export interface PriceProvider {
 
   /** Replace the current subscription set. */
   updateSubscriptions(symbols: string[]): Promise<void>;
+
+  /**
+   * Synchronously report any of the requested symbols this provider knows it
+   * cannot currently price. Returns an empty object when everything is fine.
+   * Intentionally sync — implementations should be cheap (cached file-stat,
+   * in-memory lookup). Don't make HTTP calls here.
+   */
+  getUnavailableSymbols(symbols: string[]): Record<string, UnavailableReason>;
+
+  /**
+   * Replay-only: playback rate (1 = real-time, 10 = 10x, 0 = ASAP). Returns
+   * undefined for live providers — the frontend uses this to extrapolate the
+   * sim clock between ticks for the running replay clock display.
+   */
+  getReplaySpeed?(): number;
 }

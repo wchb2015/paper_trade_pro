@@ -1,6 +1,11 @@
 import WebSocket from 'ws';
 import { getLogger } from '@chongbei/web-basics/server';
-import type { Bar, BarTimeframe, Quote } from '../../../shared/src';
+import type {
+  Bar,
+  BarTimeframe,
+  Quote,
+  UnavailableReason,
+} from '../../../shared/src';
 import type { AppConfig } from '../config';
 import type {
   PriceProvider,
@@ -213,6 +218,13 @@ export class AlpacaProvider implements PriceProvider {
         JSON.stringify({ action: 'unsubscribe', trades: toRemove }),
       );
     }
+  }
+
+  getUnavailableSymbols(_symbols: string[]): Record<string, UnavailableReason> {
+    // Alpaca doesn't expose per-symbol availability synchronously. Anything
+    // unknown will surface as an empty Quote on fetchQuotes / a stream-side
+    // error — same behavior as today.
+    return {};
   }
 
   // -------------------------- internals -------------------------------------

@@ -1,6 +1,8 @@
 import { io, type Socket } from "socket.io-client";
 import { api } from "@chongbei/web-basics/client";
 import type {
+  BarsResponse,
+  BarTimeframe,
   ClientToServerEvents,
   PriceTickPayload,
   ProviderStatusPayload,
@@ -39,6 +41,23 @@ export class PriceClient {
       symbols: symbols.map((s) => s.toUpperCase()).join(","),
     });
     return api<QuotesResponse>(`${this.baseUrl}/api/quotes?${q}`);
+  }
+
+  /**
+   * Historical OHLC bars. Backend caches per (symbol, timeframe, limit) so
+   * repeating these calls is cheap. Used to seed the intraday sparkline.
+   */
+  async fetchBars(
+    symbol: string,
+    timeframe: BarTimeframe,
+    limit: number,
+  ): Promise<BarsResponse> {
+    const q = new URLSearchParams({
+      symbol: symbol.toUpperCase(),
+      timeframe,
+      limit: String(limit),
+    });
+    return api<BarsResponse>(`${this.baseUrl}/api/bars?${q}`);
   }
 
   /**

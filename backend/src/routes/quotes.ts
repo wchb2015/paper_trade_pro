@@ -70,10 +70,13 @@ export function createQuotesRouter(deps: RouteDeps): Router {
         );
       });
 
+      const unavailable = deps.provider.getUnavailableSymbols(symbols);
+
       const body: QuotesResponse = {
         quotes,
         providerStatus: deps.hub.getStatus().status,
         provider: deps.provider.name,
+        ...(Object.keys(unavailable).length > 0 ? { unavailable } : {}),
       };
       return res.json(body);
     } catch (err) {

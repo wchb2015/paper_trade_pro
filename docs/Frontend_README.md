@@ -105,5 +105,6 @@ and alerts are all server-authoritative.
 ## Styling
 
 Global design tokens live at the top of [src/index.css](src/index.css). Dark
-mode is swapped via `[data-theme='dark']` on `<html>`. Accent and gain/loss
-colors can be customized at runtime via the Tweaks panel (bottom-right cog).
+mode is swapped via `[data-theme='dark']` on `<html>`. Accent color, gain/loss
+palette, and theme can be customized at runtime via the Tweaks panel (cog
+button in the top-right of the topbar).

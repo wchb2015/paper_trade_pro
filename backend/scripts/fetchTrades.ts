@@ -31,14 +31,15 @@ dotenv.config({ path: resolveDotEnv() });
 // Docs: https://docs.alpaca.markets/reference/stocktrades-1
 //
 // Usage:
+//   npx tsx backend/scripts/fetchTrades.ts TSLA 2026-05-01                # whole day (00:00–23:59 ET)
 //   npx tsx backend/scripts/fetchTrades.ts TSLA 2026-05-01 09:30 10:30
 //   npx tsx backend/scripts/fetchTrades.ts TSLA 2026-05-01 09:30 10:30 --feed iex
 //
 // Arguments:
 //   symbol   Stock ticker (e.g. TSLA)
 //   date     YYYY-MM-DD in America/New_York (e.g. 2026-05-01)
-//   startHm  HH:MM in America/New_York (e.g. 09:30)
-//   endHm    HH:MM in America/New_York (e.g. 10:30)
+//   startHm  HH:MM in America/New_York (e.g. 09:30) — optional, defaults to 00:00
+//   endHm    HH:MM in America/New_York (e.g. 10:30) — optional, defaults to 23:59
 //
 // Flags:
 //   --feed iex|sip   (default: env ALPACA_FEED or 'iex')
@@ -86,18 +87,21 @@ function parseArgs(argv: string[]): Args {
     positional.push(a);
   }
 
-  if (positional.length < 4) {
+  if (positional.length !== 2 && positional.length !== 4) {
     throw new Error(
-      "Usage: fetchTrades.ts <SYMBOL> <YYYY-MM-DD> <HH:MM> <HH:MM> [--feed iex|sip] [--out path] [--force]",
+      "Usage: fetchTrades.ts <SYMBOL> <YYYY-MM-DD> [<HH:MM> <HH:MM>] [--feed iex|sip] [--out path] [--force]",
     );
   }
 
-  const [symbol, date, startHm, endHm] = positional as [
+  const [symbol, date, startHmRaw, endHmRaw] = positional as [
     string,
     string,
-    string,
-    string,
+    string | undefined,
+    string | undefined,
   ];
+  // Default to the full ET day when no time range is supplied.
+  const startHm = startHmRaw ?? "00:00";
+  const endHm = endHmRaw ?? "23:59";
 
   if (!/^[A-Za-z.]{1,8}$/.test(symbol))
     throw new Error(`Bad symbol: ${symbol}`);

@@ -30,6 +30,15 @@ function resolvePortsCjs(): string {
   }
 }
 
+// Locate the real `backend/` directory regardless of whether we're running
+// from source (backend/src) or the compiled tree (backend/dist/backend/src).
+// Anchored to the repo root via ports.cjs — a static literal breaks for one
+// of the two runtimes because tsconfig's rootDir is the repo root, and the
+// nested `backend/dist/backend/` sibling makes a basename walk ambiguous.
+function resolveBackendDir(): string {
+  return path.join(path.dirname(resolvePortsCjs()), "backend");
+}
+
 const ports = require(resolvePortsCjs()) as {
   BACKEND_PORT: number;
   FRONTEND_DEV_PORT: number;
@@ -155,7 +164,7 @@ export function loadConfig(): AppConfig {
       loop: (optionalEnv("REPLAY_LOOP") ?? "true").toLowerCase() !== "false",
       cacheDir:
         optionalEnv("REPLAY_CACHE_DIR") ??
-        path.resolve(__dirname, "..", ".replay-cache"),
+        path.join(resolveBackendDir(), ".replay-cache"),
     },
   };
 

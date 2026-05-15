@@ -74,19 +74,33 @@ export class QuoteCache {
   /**
    * Merge a streaming tick into the cache so subsequent GET /quotes returns
    * the fresh price without re-hitting the REST endpoint.
+   *
+   * Per-field merge rule: take whatever the tick gives us when non-null;
+   * otherwise keep the cached value. AlpacaProvider's stream only carries
+   * price+timestamp (other fields are null) — those fall through to the
+   * cached snapshot. ReplayProvider's stream also carries running
+   * dayOpen/dayHigh/dayLow/volume, which need to overwrite the cached
+   * values so /quotes reflects the simulation's progress.
    */
   applyTick(quote: Quote): void {
     const existing = this.entries.get(quote.symbol);
-    // Preserve non-null snapshot fields (bid/ask/dayHigh/etc.) — the tick
-    // only carries price + timestamp.
-    const merged: Quote = existing
-      ? {
-          ...existing.quote,
-          price: quote.price,
-          timestamp: quote.timestamp,
-          status: 'live',
-        }
-      : quote;
+    if (!existing) {
+      this.entries.set(quote.symbol, { quote, cachedAt: Date.now() });
+      return;
+    }
+    const merged: Quote = {
+      ...existing.quote,
+      price: quote.price,
+      timestamp: quote.timestamp,
+      status: 'live',
+      bid: quote.bid ?? existing.quote.bid,
+      ask: quote.ask ?? existing.quote.ask,
+      dayOpen: quote.dayOpen ?? existing.quote.dayOpen,
+      dayHigh: quote.dayHigh ?? existing.quote.dayHigh,
+      dayLow: quote.dayLow ?? existing.quote.dayLow,
+      prevClose: quote.prevClose ?? existing.quote.prevClose,
+      volume: quote.volume ?? existing.quote.volume,
+    };
     this.entries.set(quote.symbol, { quote: merged, cachedAt: Date.now() });
   }
 

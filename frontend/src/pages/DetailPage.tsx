@@ -4,6 +4,8 @@ import { PriceChart } from '../components/PriceChart';
 import { Empty } from '../components/Empty';
 import { fmtMoney, fmtPct, fmtVol } from '../lib/format';
 import { dayChange, dayChangePct, money } from '../lib/quote';
+import { useBars } from '../hooks/useBars';
+import type { BarTimeframe } from '../../../shared/src';
 import type {
   AlertCtx,
   Market,
@@ -22,11 +24,20 @@ interface DetailPageProps {
   onNavigate: (page: PageKey, ticker?: string) => void;
 }
 
-const ranges: Record<string, number> = {
-  '1D': 20,
-  '1W': 35,
-  '1M': 60,
-  '3M': 90,
+type RangeKey = '1D' | '1W' | '1M' | '3M';
+
+// Each visible range maps to the bar resolution + how many bars to request.
+// 1D uses 1Min bars (~390 trading minutes); the longer ranges roll up to 1Day
+// candles where one bar = one trading day. The backend caches /api/bars per
+// (symbol, timeframe, limit) so polling here is cheap.
+const rangeConfig: Record<
+  RangeKey,
+  { timeframe: BarTimeframe; limit: number; xLabel: 'date' | 'time' }
+> = {
+  '1D': { timeframe: '1Min', limit: 390, xLabel: 'time' },
+  '1W': { timeframe: '1Day', limit: 5, xLabel: 'date' },
+  '1M': { timeframe: '1Day', limit: 22, xLabel: 'date' },
+  '3M': { timeframe: '1Day', limit: 66, xLabel: 'date' },
 };
 
 export function DetailPage({
@@ -39,7 +50,13 @@ export function DetailPage({
   onNavigate,
 }: DetailPageProps) {
   const m = market[ticker];
-  const [range, setRange] = useState<keyof typeof ranges>('1M');
+  const [range, setRange] = useState<RangeKey>('1M');
+  const cfg = rangeConfig[range];
+  // Pull historical OHLC for the selected range. useBars polls every minute
+  // so the latest candle keeps refreshing; backend caches per (sym, tf, limit)
+  // so this is cheap. Single-symbol fetch -> result keyed by ticker.
+  const barsBySymbol = useBars([ticker], cfg.timeframe, cfg.limit, 60_000);
+  const bars = barsBySymbol[ticker] ?? [];
 
   if (!m) {
     return (
@@ -54,8 +71,7 @@ export function DetailPage({
     );
   }
 
-  const rangeSize = ranges[range] ?? 60;
-  const dataSlice = m.history.slice(-rangeSize);
+  const chartPoints = bars.map((b) => ({ t: b.t, p: b.c }));
   const pct = dayChangePct(m);
   const change = dayChange(m);
 
@@ -168,11 +184,11 @@ export function DetailPage({
             <div className="card-header">
               <h3 className="card-title">Price</h3>
               <div className="segmented">
-                {Object.keys(ranges).map((r) => (
+                {(Object.keys(rangeConfig) as RangeKey[]).map((r) => (
                   <button
                     key={r}
                     className={range === r ? 'active' : ''}
-                    onClick={() => setRange(r as keyof typeof ranges)}
+                    onClick={() => setRange(r)}
                   >
                     {r}
                   </button>
@@ -180,7 +196,28 @@ export function DetailPage({
               </div>
             </div>
             <div className="card-body">
-              <PriceChart data={dataSlice} height={320} />
+              {chartPoints.length >= 2 ? (
+                <PriceChart
+                  points={chartPoints}
+                  height={320}
+                  xLabelMode={cfg.xLabel}
+                />
+              ) : (
+                <div
+                  style={{
+                    height: 320,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'var(--text-muted)',
+                    fontSize: 13,
+                  }}
+                >
+                  {bars.length === 0
+                    ? 'Loading historical bars…'
+                    : `No ${range} data available for this symbol.`}
+                </div>
+              )}
             </div>
           </div>
 

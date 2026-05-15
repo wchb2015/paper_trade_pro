@@ -43,7 +43,7 @@ export class PriceStreamHub {
     trimmed.forEach((s) => this.subscribed.add(s));
 
     await this.provider.startStream(trimmed, {
-      onQuote: (quote) => this.handleTick(quote),
+      onQuote: (quote, meta) => this.handleTick(quote, meta),
       onStatusChange: (s, detail) => this.handleStatusChange(s, detail),
     });
 
@@ -98,13 +98,16 @@ export class PriceStreamHub {
     return unique.slice(0, this.cfg.limits.MAX_STREAM_SYMBOLS);
   }
 
-  private handleTick(quote: Quote): void {
+  private handleTick(quote: Quote, meta?: { simTimestamp?: number }): void {
     // Keep the cache warm so REST /quotes reflects live data.
     this.cache.applyTick(quote);
     const payload: PriceTickPayload = {
       symbol: quote.symbol,
       price: quote.price,
       timestamp: quote.timestamp,
+      ...(meta?.simTimestamp !== undefined
+        ? { simTimestamp: meta.simTimestamp }
+        : {}),
     };
     this.io.emit(SOCKET_EVENTS.PRICE_TICK, payload);
   }
@@ -139,10 +142,12 @@ export class PriceStreamHub {
         "upstream price provider connected",
       );
     }
+    const replaySpeed = this.provider.getReplaySpeed?.();
     const next: ProviderStatusPayload = {
       status,
       provider: this.provider.name,
       ...(detail !== undefined ? { message: detail } : {}),
+      ...(replaySpeed !== undefined ? { replaySpeed } : {}),
     };
     this.status = next;
     this.io.emit(SOCKET_EVENTS.PROVIDER_STATUS, next);

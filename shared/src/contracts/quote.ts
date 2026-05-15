@@ -46,6 +46,18 @@ export interface Bar {
 
 export type BarTimeframe = '1Min' | '5Min' | '15Min' | '1Hour' | '1Day';
 
+/**
+ * Why a particular symbol cannot be priced right now. Currently emitted
+ * by the replay provider for symbols whose NDJSON file is missing for
+ * the configured REPLAY_DATE. The discriminator lets us add new reasons
+ * (unknown-symbol, fetch-failed, etc.) later without reshaping clients.
+ */
+export interface UnavailableReason {
+  code: 'no-replay-data';
+  /** Human-readable, ready to render verbatim in the UI. */
+  message: string;
+}
+
 /** REST responses. */
 export interface QuotesResponse {
   quotes: Record<string, Quote>;
@@ -53,6 +65,12 @@ export interface QuotesResponse {
   providerStatus: PriceStatus;
   /** Provider name (surfacing in UI for debug / "provider: alpaca"). */
   provider: string;
+  /**
+   * Symbols the provider knows it cannot price right now (e.g. replay
+   * has no NDJSON file for the configured date). Keyed by symbol.
+   * Optional so existing clients ignore it gracefully.
+   */
+  unavailable?: Record<string, UnavailableReason>;
 }
 
 export interface BarsResponse {
@@ -72,7 +90,15 @@ export interface SubscriptionsResponse {
 export interface PriceTickPayload {
   symbol: string;
   price: number;
+  /** Wall-clock epoch ms when the tick was emitted (drives stale detection). */
   timestamp: number;
+  /**
+   * Replay-only: the *simulated* market timestamp this tick represents
+   * (epoch ms in the original session). The frontend extrapolates between
+   * ticks using `providerStatus.replaySpeed` to render a running clock.
+   * Absent under live providers — the wall clock is the truth there.
+   */
+  simTimestamp?: number;
 }
 
 /** Connection-level status pushed over the socket. */
@@ -81,4 +107,10 @@ export interface ProviderStatusPayload {
   provider: string;
   /** Optional human-readable detail for the UI. */
   message?: string;
+  /**
+   * Replay-only: playback rate (1 = real-time, 10 = ten-times faster, 0
+   * = drain ASAP). Frontend uses this to extrapolate the sim clock between
+   * ticks. Absent under live providers.
+   */
+  replaySpeed?: number;
 }

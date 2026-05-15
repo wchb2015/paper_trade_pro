@@ -4,15 +4,19 @@ import { Sparkline } from '../components/Sparkline';
 import { Empty } from '../components/Empty';
 import { fmtPct, fmtVol } from '../lib/format';
 import { dayChange, dayChangePct } from '../lib/quote';
+import { getStockMeta } from '../lib/seedStocks';
+import { useBars } from '../hooks/useBars';
 import type {
   Market,
   PageKey,
   Portfolio,
   TradeCtx,
 } from '../lib/types';
+import type { UnavailableReason } from '../../../shared/src';
 
 interface WatchlistPageProps {
   market: Market;
+  unavailable: Record<string, UnavailableReason>;
   portfolio: Portfolio;
   toggleWatch: (ticker: string) => void;
   onNavigate: (page: PageKey, ticker?: string) => void;
@@ -22,6 +26,7 @@ interface WatchlistPageProps {
 
 export function WatchlistPage({
   market,
+  unavailable,
   portfolio,
   toggleWatch,
   onNavigate,
@@ -29,9 +34,25 @@ export function WatchlistPage({
   setTradeCtx,
 }: WatchlistPageProps) {
   const { watchlist } = portfolio;
-  const rows = watchlist
-    .map((t) => ({ ticker: t, m: market[t] }))
-    .filter((r) => r.m);
+  // 1Min intraday bars for the sparkline column. Refreshed every minute by
+  // the hook; the backend's 30s bars cache absorbs duplicate calls.
+  const intradayBars = useBars(watchlist, '1Min', 400, 60_000);
+  // Classify each watchlist ticker. Loading rows (no quote yet, no
+  // unavailability info) are skipped — they resolve in the next snapshot
+  // call, typically within a few hundred ms.
+  type Row =
+    | { kind: 'priced'; ticker: string; m: NonNullable<Market[string]> }
+    | { kind: 'banner'; ticker: string; reason: UnavailableReason };
+  const rows: Row[] = [];
+  for (const t of watchlist) {
+    const m = market[t];
+    if (m) {
+      rows.push({ kind: 'priced', ticker: t, m });
+      continue;
+    }
+    const reason = unavailable[t];
+    if (reason) rows.push({ kind: 'banner', ticker: t, reason });
+  }
 
   return (
     <div>
@@ -66,7 +87,7 @@ export function WatchlistPage({
           <div style={{ textAlign: 'right' }}>Last</div>
           <div style={{ textAlign: 'right' }}>Change</div>
           <div style={{ textAlign: 'right' }}>Volume</div>
-          <div style={{ textAlign: 'center' }}>30D</div>
+          <div style={{ textAlign: 'center' }}>Today</div>
           <div></div>
         </div>
         {rows.length === 0 && (
@@ -75,8 +96,68 @@ export function WatchlistPage({
             subtitle="Click Add symbol to start tracking."
           />
         )}
-        {rows.map(({ ticker, m }) => {
-          if (!m) return null;
+        {rows.map((row) => {
+          if (row.kind === 'banner') {
+            const { ticker, reason } = row;
+            return (
+              <div
+                key={ticker}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1.3fr 1fr 1fr 0.8fr 0.6fr 0.4fr',
+                  padding: '14px 16px',
+                  borderBottom: '1px solid var(--border)',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <div>
+                  <div className="ticker">{ticker}</div>
+                  <div className="company">
+                    {getStockMeta(ticker).name}
+                  </div>
+                </div>
+                <div
+                  style={{
+                    gridColumn: '2 / 6',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    color: 'var(--text-muted)',
+                    fontSize: 12.5,
+                  }}
+                >
+                  <span
+                    className="chip"
+                    style={{
+                      background: 'rgba(245, 158, 11, 0.14)',
+                      color: '#f59e0b',
+                    }}
+                  >
+                    No data
+                  </span>
+                  <span>{reason.message}</span>
+                </div>
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: 4,
+                    justifyContent: 'flex-end',
+                  }}
+                >
+                  <button
+                    className="btn sm ghost"
+                    onClick={() => toggleWatch(ticker)}
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            );
+          }
+
+          // priced row — unchanged from the previous implementation
+          const { ticker, m } = row;
           const pct = dayChangePct(m);
           const change = dayChange(m);
           return (
@@ -124,12 +205,32 @@ export function WatchlistPage({
               >
                 {m.volume != null ? fmtVol(m.volume) : '—'}
               </div>
-              <div style={{ display: 'flex', justifyContent: 'center' }}>
-                <Sparkline
-                  data={m.history.slice(-30)}
-                  width={64}
-                  height={24}
-                />
+              <div
+                style={{ display: 'flex', justifyContent: 'center' }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {(() => {
+                  const bars = intradayBars[ticker];
+                  // Prefer real intraday bars when we have them. Fall back
+                  // to live tick history (no timestamps → no tooltip) until
+                  // the first /api/bars response lands.
+                  if (bars && bars.length >= 2) {
+                    return (
+                      <Sparkline
+                        points={bars.map((b) => ({ t: b.t, p: b.c }))}
+                        width={80}
+                        height={24}
+                      />
+                    );
+                  }
+                  return (
+                    <Sparkline
+                      data={m.history.slice(-30)}
+                      width={80}
+                      height={24}
+                    />
+                  );
+                })()}
               </div>
               <div
                 style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}

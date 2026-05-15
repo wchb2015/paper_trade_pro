@@ -1,7 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { getLogger } from "@chongbei/web-basics/server";
-import type { Bar, BarTimeframe, Quote } from "../../../shared/src";
+import type {
+  Bar,
+  BarTimeframe,
+  Quote,
+  UnavailableReason,
+} from "../../../shared/src";
 import type { AppConfig } from "../config";
 import type {
   PriceProvider,
@@ -68,6 +73,17 @@ export class ReplayProvider implements PriceProvider {
   /** Bar cache so the chart doesn't re-scan the file on every render. */
   private barsCache = new Map<string, Bar[]>();
 
+  /**
+   * Per-symbol intraday accumulators updated as ticks emit. Seeded with the
+   * file's first trade on first read so `fetchQuotes` has a non-null `dayOpen`
+   * immediately. `high/low/volume` reflect the simulation's progress, not the
+   * pre-computed full-day total — that matches the running replay clock.
+   */
+  private dayStats = new Map<
+    string,
+    { open: number; high: number; low: number; volume: number }
+  >();
+
   /** Anchors for sim-clock ↔ wall-clock mapping. */
   private wallStartMs = 0;
   private simStartMs = 0;
@@ -79,6 +95,15 @@ export class ReplayProvider implements PriceProvider {
 
   private schedulerTimer: NodeJS.Timeout | null = null;
 
+  /**
+   * True between `startStream` (or `updateSubscriptions` reviving the stream)
+   * and the scheduler exiting on an empty heap with no looping. Used so a
+   * later `updateSubscriptions` can wake the scheduler back up — without
+   * this, the very common boot-with-empty-subscriptions sequence permanently
+   * kills tick emission and the UI stays static at the very first trade.
+   */
+  private schedulerIdle = true;
+
   constructor(private readonly cfg: AppConfig) {}
 
   // -------------------------- REST-style snapshots --------------------------
@@ -89,17 +114,77 @@ export class ReplayProvider implements PriceProvider {
       const sym = raw.toUpperCase();
       const last = this.lastPrice.get(sym);
       if (last) {
-        out[sym] = buildQuote(sym, last.price, last.timestamp);
+        out[sym] = this.buildQuoteForSymbol(sym, last.price, last.timestamp);
         continue;
       }
       // No tick has been emitted yet — peek the first trade on disk if we can
-      // so the UI has something to render before the scheduler starts.
+      // so the UI has something to render before the scheduler starts. Also
+      // seed dayStats so `dayOpen` is non-null on this first snapshot (the
+      // detail page header uses it as the day-change baseline).
       const first = this.peekFirstTrade(sym);
       if (first) {
-        out[sym] = buildQuote(sym, first.p, Date.parse(first.t) || Date.now());
+        this.seedDayStats(sym, first.p);
+        out[sym] = this.buildQuoteForSymbol(
+          sym,
+          first.p,
+          Date.parse(first.t) || Date.now(),
+        );
       }
     }
     return out;
+  }
+
+  /**
+   * Initialize the day's OHLCV accumulator. Volume starts at 0 — it only
+   * accumulates from trades emitted by the scheduler, so peeking the first
+   * trade in fetchQuotes doesn't double-count it once that same trade is
+   * later emitted by the heap drain.
+   */
+  private seedDayStats(symbol: string, price: number): void {
+    if (this.dayStats.has(symbol)) return;
+    this.dayStats.set(symbol, {
+      open: price,
+      high: price,
+      low: price,
+      volume: 0,
+    });
+  }
+
+  /** Fold a newly-emitted trade into the running OHLCV stats. */
+  private updateDayStats(symbol: string, price: number, size: number): void {
+    const cur = this.dayStats.get(symbol);
+    if (!cur) {
+      this.seedDayStats(symbol, price);
+      this.dayStats.get(symbol)!.volume += size;
+      return;
+    }
+    if (price > cur.high) cur.high = price;
+    if (price < cur.low) cur.low = price;
+    cur.volume += size;
+  }
+
+  private buildQuoteForSymbol(
+    symbol: string,
+    price: number,
+    timestamp: number,
+  ): Quote {
+    const stats = this.dayStats.get(symbol);
+    return {
+      symbol,
+      price,
+      bid: null,
+      ask: null,
+      dayOpen: stats?.open ?? null,
+      dayHigh: stats?.high ?? null,
+      dayLow: stats?.low ?? null,
+      // Replay only loads a single trading day — there is no prior file to
+      // derive prevClose from. The frontend's dayBase() falls back through
+      // dayOpen anyway, so percent-change still works.
+      prevClose: null,
+      volume: stats?.volume ?? null,
+      timestamp,
+      status: "live",
+    };
   }
 
   // -------------------------- Historical bars -------------------------------
@@ -198,7 +283,40 @@ export class ReplayProvider implements PriceProvider {
       await this.openStreams(toAdd);
       // New streams need to join the heap; re-anchor if we were idle.
       if (this.heap.size === 0) this.anchorClock();
+      // Boot path opens the upstream stream with no subscribed symbols, so
+      // the scheduler hits an empty heap on its first tick and exits. When
+      // the watchlist later subscribes, we have to bring the scheduler back
+      // up — otherwise emitted ticks never leave the heap.
+      if (this.schedulerIdle && this.heap.size > 0) {
+        this.anchorClock();
+        this.handlers?.onStatusChange(
+          "connected",
+          `replay ${this.cfg.replay.date} @ ${this.cfg.replay.speed}x`,
+        );
+        this.startScheduler();
+      }
     }
+  }
+
+  getReplaySpeed(): number {
+    return this.cfg.replay.speed;
+  }
+
+  getUnavailableSymbols(symbols: string[]): Record<string, UnavailableReason> {
+    const out: Record<string, UnavailableReason> = {};
+    for (const raw of symbols) {
+      const sym = raw.toUpperCase();
+      // pathFor() consults this.cfg.replay.cacheDir + replay.date — same path
+      // openStreams() uses, so this answer is consistent with what the live
+      // stream would do.
+      if (!fs.existsSync(this.pathFor(sym))) {
+        out[sym] = {
+          code: "no-replay-data",
+          message: `No replay file for ${sym} on ${this.cfg.replay.date}.`,
+        };
+      }
+    }
+    return out;
   }
 
   // -------------------------- internals -------------------------------------
@@ -275,6 +393,7 @@ export class ReplayProvider implements PriceProvider {
   }
 
   private startScheduler(): void {
+    this.schedulerIdle = false;
     const tick = async (): Promise<void> => {
       if (this.shuttingDown) return;
       try {
@@ -295,6 +414,8 @@ export class ReplayProvider implements PriceProvider {
           this.schedulerTimer = setTimeout(tick, 50);
         } else {
           this.handlers?.onStatusChange("disconnected", "replay ended");
+          this.schedulerTimer = null;
+          this.schedulerIdle = true;
         }
         return;
       }
@@ -340,11 +461,11 @@ export class ReplayProvider implements PriceProvider {
     // as stale. Preserve real timestamps in lastPrice for snapshots.
     const emittedTs = Date.now();
     this.lastPrice.set(symbol, { price: trade.p, timestamp: emittedTs });
-    const quote: Quote = buildQuote(symbol, trade.p, emittedTs);
-    this.handlers?.onQuote(quote);
-    // tsMs is currently unused downstream but we compute it for future use
-    // (e.g. a debug endpoint showing replay progress).
-    void tsMs;
+    this.updateDayStats(symbol, trade.p, trade.s ?? 0);
+    const quote: Quote = this.buildQuoteForSymbol(symbol, trade.p, emittedTs);
+    // Pass tsMs as `simTimestamp` so the frontend can show a running replay
+    // clock anchored to the historical session, not wall-clock time.
+    this.handlers?.onQuote(quote, { simTimestamp: tsMs });
   }
 
   private async reopenLoop(): Promise<void> {
@@ -352,25 +473,12 @@ export class ReplayProvider implements PriceProvider {
     for (const s of this.streams.values()) await s.reader.close();
     this.streams.clear();
     this.heap = new MinHeap((a, b) => a.ms - b.ms);
+    // New "day" — reset running OHLCV so the next loop starts at the file's
+    // first trade as that day's open, not yesterday's running totals.
+    this.dayStats.clear();
     await this.openStreams(symbols);
     this.anchorClock();
   }
-}
-
-function buildQuote(symbol: string, price: number, ts: number): Quote {
-  return {
-    symbol,
-    price,
-    bid: null,
-    ask: null,
-    dayOpen: null,
-    dayHigh: null,
-    dayLow: null,
-    prevClose: null,
-    volume: null,
-    timestamp: ts,
-    status: "live",
-  };
 }
 
 function timeframeToMs(tf: BarTimeframe): number {

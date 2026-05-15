@@ -1,9 +1,24 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+
+export interface PriceChartPoint {
+  /** Epoch ms. */
+  t: number;
+  /** Price. */
+  p: number;
+}
 
 interface PriceChartProps {
-  data: number[];
+  /** Legacy: bare price series. Use `points` when timestamps exist. */
+  data?: number[];
+  /** Time-aware series; drives real x-axis date/time labels and hover. */
+  points?: PriceChartPoint[];
   height?: number;
   showArea?: boolean;
+  /**
+   * How to format x-axis tick labels when `points` is provided. Defaults to
+   * a date label; pass 'time' for intraday charts (e.g. 1D).
+   */
+  xLabelMode?: 'date' | 'time';
 }
 
 interface HoverState {
@@ -12,10 +27,27 @@ interface HoverState {
   py: number;
 }
 
+function fmtDate(ms: number): string {
+  return new Date(ms).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function fmtTime(ms: number): string {
+  return new Date(ms).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+}
+
 export function PriceChart({
   data,
+  points,
   height = 280,
   showArea = true,
+  xLabelMode = 'date',
 }: PriceChartProps) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(600);
@@ -30,10 +62,21 @@ export function PriceChart({
     return () => ro.disconnect();
   }, []);
 
-  if (!data || data.length < 2) return null;
+  // Normalize either input shape into a single array of {t, p}. When the
+  // caller used the legacy `data` prop, `t` is a synthetic index — labels
+  // fall back to "—" because we have no real time anchor for them.
+  const series: PriceChartPoint[] = useMemo(() => {
+    if (points && points.length > 0) return points;
+    if (data && data.length > 0) return data.map((p, i) => ({ t: i, p }));
+    return [];
+  }, [points, data]);
+  const hasTime = points !== undefined && points.length > 0;
 
-  const min = Math.min(...data);
-  const max = Math.max(...data);
+  if (series.length < 2) return null;
+
+  const prices = series.map((s) => s.p);
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
   const pad = (max - min) * 0.1 || 1;
   const yMin = min - pad;
   const yMax = max + pad;
@@ -45,12 +88,12 @@ export function PriceChart({
   const plotW = Math.max(10, width - leftPad - rightPad);
   const plotH = Math.max(10, height - topPad - botPad);
 
-  const x = (i: number) => leftPad + (i / (data.length - 1)) * plotW;
+  const x = (i: number) => leftPad + (i / (series.length - 1)) * plotW;
   const y = (v: number) => topPad + (1 - (v - yMin) / range) * plotH;
 
-  const linePts = data.map((v, i) => `${x(i)},${y(v)}`).join(' ');
+  const linePts = series.map((s, i) => `${x(i)},${y(s.p)}`).join(' ');
   const areaPts = `${leftPad},${y(yMin)} ${linePts} ${leftPad + plotW},${y(yMin)}`;
-  const isUp = data[data.length - 1] >= data[0];
+  const isUp = series[series.length - 1].p >= series[0].p;
   const color = isUp ? 'var(--up)' : 'var(--down)';
 
   const gridLines = 4;
@@ -60,13 +103,12 @@ export function PriceChart({
   );
 
   const xTicks = 5;
-  const today = new Date();
   const labels = Array.from({ length: xTicks + 1 }, (_, i) => {
-    const d = new Date(today);
-    d.setDate(
-      d.getDate() - (xTicks - i) * Math.floor(data.length / xTicks / 1),
-    );
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    if (!hasTime) return '';
+    const idx = Math.round((i / xTicks) * (series.length - 1));
+    const t = series[idx]?.t;
+    if (t == null) return '';
+    return xLabelMode === 'time' ? fmtTime(t) : fmtDate(t);
   });
 
   const handleMove = (e: React.MouseEvent<SVGSVGElement>) => {
@@ -76,9 +118,9 @@ export function PriceChart({
       setHover(null);
       return;
     }
-    const idx = Math.round(((px - leftPad) / plotW) * (data.length - 1));
-    const clamped = Math.max(0, Math.min(data.length - 1, idx));
-    setHover({ idx: clamped, px, py: y(data[clamped]) });
+    const idx = Math.round(((px - leftPad) / plotW) * (series.length - 1));
+    const clamped = Math.max(0, Math.min(series.length - 1, idx));
+    setHover({ idx: clamped, px, py: y(series[clamped].p) });
   };
 
   return (
@@ -187,9 +229,19 @@ export function PriceChart({
           className="chart-hover"
           style={{ left: Math.min(width - 100, hover.px + 10), top: 8 }}
         >
-          <span className="mono" style={{ fontWeight: 600 }}>
-            ${data[hover.idx].toFixed(2)}
-          </span>
+          <div className="mono" style={{ fontWeight: 600 }}>
+            ${series[hover.idx].p.toFixed(2)}
+          </div>
+          {hasTime && (
+            <div
+              className="mono"
+              style={{ color: 'var(--text-muted)', fontSize: 11, marginTop: 2 }}
+            >
+              {xLabelMode === 'time'
+                ? fmtTime(series[hover.idx].t)
+                : fmtDate(series[hover.idx].t)}
+            </div>
+          )}
         </div>
       )}
     </div>

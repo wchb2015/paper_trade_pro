@@ -11,6 +11,7 @@ import { OrdersPage } from './pages/OrdersPage';
 import { AlertsPage } from './pages/AlertsPage';
 import { AccountPage } from './pages/AccountPage';
 import { useMarket } from './hooks/useMarket';
+import { useReplayClock } from './hooks/useReplayClock';
 import { usePortfolio } from './hooks/usePortfolio';
 import { fmtMoney, fmtPct } from './lib/format';
 import { STOCK_META } from './lib/seedStocks';
@@ -101,8 +102,9 @@ export default function App() {
     alertCtx?.ticker,
   ]);
 
-  const { market, liveConnected, providerStatus, provider, error } =
+  const { market, unavailable, liveConnected, providerStatus, provider, error, replayClock } =
     useMarket(interestingSymbols);
+  const replaySimMs = useReplayClock(replayClock);
 
   // Mirror the live market into `marketView` so usePortfolio sees fresh data.
   // This is the second half of the cycle-break described above.
@@ -252,6 +254,7 @@ export default function App() {
         return (
           <WatchlistPage
             market={market}
+            unavailable={unavailable}
             portfolio={portfolio}
             toggleWatch={toggleWatch}
             onNavigate={onNavigate}
@@ -379,6 +382,26 @@ export default function App() {
             style={{ cursor: 'default' }}
           >
             {statusPill.label}
+            {replaySimMs !== null && (
+              <span
+                className="mono tnum"
+                style={{
+                  marginLeft: 6,
+                  paddingLeft: 6,
+                  borderLeft: '1px solid var(--border)',
+                  color: 'var(--text-muted)',
+                  fontSize: 11.5,
+                }}
+                title={`Replay session clock @ ${replayClock?.speed ?? 1}x`}
+              >
+                {new Date(replaySimMs).toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  second: '2-digit',
+                  hour12: false,
+                })}
+              </span>
+            )}
             <span
               style={{
                 width: 7,
