@@ -44,6 +44,8 @@ The two sides read disjoint sets of vars — backend reads bare names (`APCA_KEY
 
 Validated at startup in `backend/src/config.ts` — missing required vars throw immediately so we fail fast rather than 500 on the first request.
 
+> **Ports / URLs** (`BACKEND_PORT`, `FRONTEND_DEV_PORT`, `BACKEND_URL`, `FRONTEND_DEV_URL`) are configured in `ports.cjs` at the repo root, **not** in `.env`. `backend/src/config.ts` and `frontend/vite.config.ts` `require()` it directly and throw if any key is missing.
+
 ### Required
 
 | Var | Example | Notes |
@@ -60,8 +62,6 @@ Validated at startup in `backend/src/config.ts` — missing required vars throw 
 | `ALPACA_FEED` | `iex` | `iex` (free) or `sip` (paid SIP feed). |
 | `ALPACA_DATA_URL` | `https://data.alpaca.markets` | Override REST data endpoint. |
 | `ALPACA_STREAM_URL` | `wss://stream.data.alpaca.markets/v2/<feed>` | Override WS endpoint. |
-| `PORT` | `4000` | Backend HTTP/Socket.io port. |
-| `FRONTEND_ORIGIN` | `http://localhost:5173` | CORS allow-origin. |
 | `CURRENT_USER_ID` | `3f7c9b2e-8a41-4d6c-b5f3-1e9a72c4d8ab` | Pre-auth single-user scope; replace with session subject when login lands. |
 | `INITIAL_CASH` | `100000` | Starting cash for new accounts and `/api/portfolio/reset`. |
 | `REPLAY_DATE` | `2026-05-01` | Folder under `backend/.replay-cache/` to replay (only when `PRICE_PROVIDER=replay`). |
@@ -71,11 +71,10 @@ Validated at startup in `backend/src/config.ts` — missing required vars throw 
 
 ## Frontend env vars
 
-Only `VITE_*` vars reach the browser. `VITE_BACKEND_URL` is **required** — `frontend/src/config.ts` throws at load time if it is missing. The others are optional with defaults in `frontend/src/config.ts`.
+Only `VITE_*` vars reach the browser. `VITE_BACKEND_URL` is injected at build time from `ports.cjs` via `vite.config.ts` `define` — it is **not** read from `.env`. The remaining knobs below are optional with defaults in `frontend/src/config.ts`.
 
 | Var | Default | Purpose |
 |---|---|---|
-| `VITE_BACKEND_URL` | **required** | Backend base URL (REST + Socket.io). |
 | `VITE_SNAPSHOT_REFRESH_MS` | `30000` | Cadence for re-fetching snapshots over REST. The socket delivers ticks continuously; this covers bid/ask/OHLC drift. |
 | `VITE_STALE_AFTER_MS` | `60000` | A symbol with no tick for this long is rendered as "stale". |
 

@@ -8,14 +8,14 @@ talks to a market data provider directly.
 
 ```bash
 npm install
-cp ../.env.example ../.env   # required — at minimum VITE_BACKEND_URL must be set
+cp ../.env.example ../.env   # set APCA_KEY_ID, APCA_SECRET_KEY, DATABASE_URL
 npm run dev
 ```
 
-The dev server runs on `http://localhost:5173`. `VITE_BACKEND_URL` is
-required and must point at the backend (e.g. `http://localhost:4000` for
-local dev); the frontend throws at load time if it is missing. Vite reads
-the env from the repo root (`envDir: '..'` in `vite.config.ts`).
+The dev server runs on `http://localhost:5011` and the backend on
+`http://localhost:5010`. Both ports — and the backend URL the frontend
+points at — come from `../ports.cjs` (single source of truth). Vite reads
+non-port env vars from the repo root (`envDir: '..'` in `vite.config.ts`).
 
 ## Scripts
 
@@ -26,12 +26,13 @@ the env from the repo root (`envDir: '..'` in `vite.config.ts`).
 
 ## Environment
 
-All build-time config lives in [src/config.ts](src/config.ts). Override by
-setting these in `.env.local` (see [.env.example](.env.example)):
+All build-time config lives in [src/config.ts](src/config.ts). The backend
+URL comes from `../ports.cjs` (injected via `vite.config.ts` `define`); the
+remaining knobs are read from the root `.env` (see [.env.example](../.env.example)):
 
 | Var | Default | Purpose |
 | --- | --- | --- |
-| `VITE_BACKEND_URL` | **required** | Backend REST + socket origin |
+| `VITE_BACKEND_URL` | from `ports.cjs` | Backend REST + socket origin (do not set in `.env`) |
 | `VITE_SNAPSHOT_REFRESH_MS` | `30000` | Interval for re-fetching snapshots to refresh bid/ask/OHLC |
 | `VITE_STALE_AFTER_MS` | `60000` | A symbol with no tick for this long renders as "stale" |
 

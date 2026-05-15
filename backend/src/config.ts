@@ -4,7 +4,24 @@ import { FREE_TIER, PROVIDERS, type ProviderName } from "../../shared/src";
 // -----------------------------------------------------------------------------
 // Typed config. Secrets + deployment knobs come from .env. Rate limits,
 // timeouts, and derived defaults live here (typed + version-controlled).
+//
+// Ports / URLs come from ports.cjs at the repo root — single source of truth.
+// No .env fallback: if a required key is missing or wrong type, throw at
+// startup so we fail fast instead of binding to a wrong port.
 // -----------------------------------------------------------------------------
+
+const ports = require("../../ports.cjs") as {
+  BACKEND_PORT: number;
+  FRONTEND_DEV_PORT: number;
+  BACKEND_URL: string;
+  FRONTEND_DEV_URL: string;
+};
+if (typeof ports.BACKEND_PORT !== "number") {
+  throw new Error("FATAL: ports.cjs missing BACKEND_PORT (number)");
+}
+if (typeof ports.FRONTEND_DEV_URL !== "string" || !ports.FRONTEND_DEV_URL) {
+  throw new Error("FATAL: ports.cjs missing FRONTEND_DEV_URL (string)");
+}
 
 function requireEnv(name: string): string {
   const v = process.env[name];
@@ -93,8 +110,8 @@ export function loadConfig(): AppConfig {
   const feed = parseFeed(optionalEnv("ALPACA_FEED"));
 
   const cfg: AppConfig = {
-    port: Number(optionalEnv("PORT") ?? 4000),
-    frontendOrigin: optionalEnv("FRONTEND_ORIGIN") ?? "http://localhost:5173",
+    port: ports.BACKEND_PORT,
+    frontendOrigin: ports.FRONTEND_DEV_URL,
     provider,
     alpaca: {
       keyId: requireEnv("APCA_KEY_ID"),

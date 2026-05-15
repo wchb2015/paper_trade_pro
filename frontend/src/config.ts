@@ -7,8 +7,8 @@ const meta = import.meta.env as Record<string, string | undefined>;
 const backendUrl = meta['VITE_BACKEND_URL'];
 if (!backendUrl) {
   const msg =
-    'FATAL: VITE_BACKEND_URL is required but was not provided. ' +
-    'Set it in your .env (repo root, see .env.example) before building/running the frontend.';
+    'FATAL: VITE_BACKEND_URL is required. It is injected from ports.cjs ' +
+    'via vite.config.ts `define` — make sure vite.config.ts was loaded.';
   console.error(msg);
   throw new Error(msg);
 }
