@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Icon } from '../components/Icon';
 import { PriceChart } from '../components/PriceChart';
 import { Empty } from '../components/Empty';
-import { fmtMoney, fmtPct, fmtVol } from '../lib/format';
+import { fmtMoney, fmtPct } from '../lib/format';
 import { dayChange, dayChangePct, money } from '../lib/quote';
 import { useBars } from '../hooks/useBars';
 import type { BarTimeframe } from '../../../shared/src';
@@ -74,6 +74,9 @@ export function DetailPage({
   const chartPoints = bars.map((b) => ({ t: b.t, p: b.c }));
   const pct = dayChangePct(m);
   const change = dayChange(m);
+  // Color the big price + change row by day direction (vs prev close).
+  const dayDir =
+    change == null || change === 0 ? null : change > 0 ? 'up' : 'down';
 
   const inWatch = portfolio.watchlist.includes(ticker);
   const longPos = portfolio.positions.find(
@@ -87,7 +90,6 @@ export function DetailPage({
     ['Open', money(m.dayOpen)],
     ['Day High', money(m.dayHigh)],
     ['Day Low', money(m.dayLow)],
-    ['Volume', m.volume != null ? fmtVol(m.volume) : '—'],
     ['Bid', money(m.bid)],
     ['Ask', money(m.ask)],
     ['Prev Close', money(m.prevClose)],
@@ -135,7 +137,7 @@ export function DetailPage({
             }}
           >
             <div
-              className="mono tnum"
+              className={`mono tnum ${dayDir ?? ''}`}
               style={{
                 fontSize: 34,
                 fontWeight: 600,
@@ -145,16 +147,29 @@ export function DetailPage({
               ${m.price.toFixed(2)}
             </div>
             <div>
-              <div
-                className={`mono tnum ${pct >= 0 ? 'up' : 'down'}`}
-                style={{ fontSize: 15, fontWeight: 500 }}
-              >
-                {change >= 0 ? '+' : ''}
-                {change.toFixed(2)}{' '}
-                <span className={`chip ${pct >= 0 ? 'up' : 'down'}`}>
-                  {fmtPct(pct)}
-                </span>
-              </div>
+              {change == null || pct == null ? (
+                <div
+                  className="mono tnum"
+                  style={{
+                    fontSize: 15,
+                    fontWeight: 500,
+                    color: 'var(--text-muted)',
+                  }}
+                >
+                  —
+                </div>
+              ) : (
+                <div
+                  className={`mono tnum ${pct >= 0 ? 'up' : 'down'}`}
+                  style={{ fontSize: 15, fontWeight: 500 }}
+                >
+                  {change >= 0 ? '+' : ''}
+                  {change.toFixed(2)}{' '}
+                  <span className={`chip ${pct >= 0 ? 'up' : 'down'}`}>
+                    {fmtPct(pct)}
+                  </span>
+                </div>
+              )}
               <div
                 style={{
                   fontSize: 11.5,

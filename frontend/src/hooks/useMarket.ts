@@ -11,7 +11,7 @@ import type { Market, StockSnapshot } from "../lib/types";
 //   1. Requests an initial snapshot via REST.
 //   2. Subscribes the backend's WS to those tickers.
 //   3. Updates the Market map on every tick.
-//   4. Periodically re-fetches snapshots to refresh bid/ask/dayHigh/volume
+//   4. Periodically re-fetches snapshots to refresh bid/ask/dayHigh
 //      (the tick stream only carries price).
 //   5. Marks symbols as 'stale' if no tick arrives within STALE_AFTER_MS.
 // -----------------------------------------------------------------------------
@@ -46,6 +46,8 @@ export interface UseMarketResult {
    * with the formula above) to render the running clock.
    */
   replayClock: ReplayClockAnchor | null;
+  /** Replay-only: the trading date being replayed (YYYY-MM-DD, ET wall-clock). */
+  replayDate: string | null;
 }
 
 function quoteToSnapshot(
@@ -72,7 +74,6 @@ function quoteToSnapshot(
     dayHigh: q.dayHigh,
     dayLow: q.dayLow,
     prevClose: q.prevClose,
-    volume: q.volume,
     lastUpdated: q.timestamp,
     freshness: "live",
   };
@@ -108,6 +109,7 @@ export function useMarket(symbols: string[]): UseMarketResult {
   const [provider, setProvider] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [replaySpeed, setReplaySpeed] = useState<number | null>(null);
+  const [replayDate, setReplayDate] = useState<string | null>(null);
   const [replayClock, setReplayClock] = useState<ReplayClockAnchor | null>(
     null,
   );
@@ -168,8 +170,20 @@ export function useMarket(symbols: string[]): UseMarketResult {
           setReplaySpeed(null);
           setReplayClock(null);
         }
+        setReplayDate(status.replayDate ?? null);
       },
-      onConnectionChange: (connected) => setLiveConnected(connected),
+      onConnectionChange: (connected) => {
+        setLiveConnected(connected);
+        // When the socket drops, stop extrapolating the replay clock —
+        // otherwise the header keeps ticking simulated time under an
+        // "Unavailable" pill, which is misleading. We re-anchor on the
+        // next tick once the socket reconnects.
+        if (!connected) {
+          setReplayClock(null);
+          setReplaySpeed(null);
+          setReplayDate(null);
+        }
+      },
     });
     return () => {
       // Keep the client alive across hot-reloads / StrictMode double-mounts.
@@ -291,5 +305,6 @@ export function useMarket(symbols: string[]): UseMarketResult {
     provider,
     error,
     replayClock,
+    replayDate,
   };
 }

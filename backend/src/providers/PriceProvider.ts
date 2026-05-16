@@ -33,8 +33,8 @@ export interface PriceProvider {
   readonly name: string;
 
   /**
-   * Fetch the latest snapshot (price + OHLC + bid/ask + volume) for a batch
-   * of symbols in a single call.
+   * Fetch the latest snapshot (price + OHLC + bid/ask) for a batch of
+   * symbols in a single call.
    */
   fetchQuotes(symbols: string[]): Promise<Record<string, Quote>>;
 
@@ -73,4 +73,10 @@ export interface PriceProvider {
    * sim clock between ticks for the running replay clock display.
    */
   getReplaySpeed?(): number;
+
+  /**
+   * Replay-only: the trading date being replayed (YYYY-MM-DD, ET wall-clock).
+   * Returns undefined for live providers. Used to label the status pill.
+   */
+  getReplayDate?(): string;
 }

@@ -51,11 +51,11 @@ export function DashboardPage({
     return [...STOCK_META]
       .map((s) => {
         const m = market[s.ticker];
-        const pct = m ? dayChangePct(m) : 0;
+        const pct = m ? dayChangePct(m) : null;
         return { ...s, m, pct };
       })
-      .filter((s) => s.m)
-      .sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct))
+      .filter((s) => s.m && s.pct != null)
+      .sort((a, b) => Math.abs(b.pct ?? 0) - Math.abs(a.pct ?? 0))
       .slice(0, 6);
   }, [market]);
 
@@ -162,10 +162,10 @@ export function DashboardPage({
                 <div style={{ textAlign: 'right', minWidth: 82 }}>
                   <div className="mono tnum">${t.m!.price.toFixed(2)}</div>
                   <div
-                    className={`chip ${t.pct >= 0 ? 'up' : 'down'}`}
+                    className={`chip ${(t.pct ?? 0) >= 0 ? 'up' : 'down'}`}
                     style={{ marginTop: 2 }}
                   >
-                    {fmtPct(t.pct)}
+                    {fmtPct(t.pct ?? 0)}
                   </div>
                 </div>
               </div>

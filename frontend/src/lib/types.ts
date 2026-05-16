@@ -47,7 +47,6 @@ export interface StockSnapshot {
   dayHigh: number | null;
   dayLow: number | null;
   prevClose: number | null;
-  volume: number | null;
   /** Epoch ms of the latest update. */
   lastUpdated: number;
   freshness: PriceFreshness;

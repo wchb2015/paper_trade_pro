@@ -8,6 +8,30 @@ Use it when:
 - You want a **deterministic** stream (same trades every run) for debugging.
 - You want to **stress-test** the pipeline by draining hours of trades in seconds (`REPLAY_SPEED=0`).
 
+## Timezone conventions
+
+There are exactly two conventions in this pipeline. Memorize them and the rest is mechanical:
+
+| Where | Timezone | Why |
+| ----- | -------- | --- |
+| Everything **on disk** and **on the wire** — `meta.json` `startIso`/`endIso`/`firstTradeIso`/`lastTradeIso`/`downloadedAt`, every NDJSON trade `"t"` field, every in-memory `Date.parse()` result. | **UTC** (RFC-3339, `Z` suffix; nanosecond precision on trade `"t"`). | Alpaca's REST API returns UTC; storing UTC end-to-end means no DST surprises and timestamps are directly comparable as numeric epoch-ms across symbols. |
+| **CLI args** (`HH:MM` start/end) and **cache folder names** (`YYYY-MM-DD`). | **America/New_York wall-clock** (auto-handles EST ↔ EDT via `Intl.DateTimeFormat`, see `fetchTrades.ts:149`). | That's how traders think about a trading day — "09:30–16:00 ET" is unambiguous; "13:30–20:00 UTC" is correct half the year and wrong the other half. |
+
+Worked example for May 2026 (EDT, UTC−4):
+
+```bash
+npm run fetch-trades -- TSLA 2026-05-15
+# → window:    09:30–16:00 ET   (CLI default)
+# → startIso:  2026-05-15T13:30:00.000Z   (UTC, written to meta.json)
+# → endIso:    2026-05-15T20:00:00.000Z
+# → first tr:  2026-05-15T13:30:00.141Z   (= 09:30:00.141 ET)
+```
+
+In January (EST, UTC−5) the same CLI would produce `14:30–21:00 UTC` — `etWallClockToUtcIso` picks the right offset for the date you supplied.
+
+The frontend displays whatever the browser's locale produces from those UTC values; it doesn't assume anything about the user's timezone.
+
+
 ## FAQ — common questions
 
 ### When does replay actually start playing?
@@ -146,8 +170,10 @@ Arguments are **wall-clock America/New_York** — the script converts them to UT
 |---|---|---|
 | `SYMBOL` | `TSLA` | Ticker, validated against `^[A-Za-z.]{1,8}$`. |
 | `YYYY-MM-DD` | `2026-05-01` | Trading date in ET. |
-| `start HH:MM` | `09:30` | Window start (ET). Optional — defaults to `00:00` when omitted. |
-| `end HH:MM` | `10:30` | Window end (ET). Optional — defaults to `23:59`. Must be >= start when provided. |
+| `start HH:MM` | `09:30` | Window start (ET). Optional — defaults to `09:30` (RTH open). |
+| `end HH:MM` | `16:00` | Window end (ET). Optional — defaults to `16:00` (RTH close). Must be ≥ start when provided. |
+
+> **Why RTH-only by default?** The IEX feed is too sparse during pre-market (04:00–09:30 ET) and after-hours (16:00–20:00 ET) — often minutes between prints. At `REPLAY_SPEED=1` that makes the UI look frozen for many wall-clock minutes before the regular session starts. Pass explicit start/end times if you actually want the extended session, e.g. `... 04:00 20:00`.
 
 | Flag | Default | Purpose |
 |---|---|---|
@@ -161,8 +187,11 @@ Arguments are **wall-clock America/New_York** — the script converts them to UT
 # Free-tier IEX feed, half-hour of TSLA
 cd backend && npm run fetch-trades -- TSLA 2026-05-01 09:30 10:00
 
-# Whole day (00:00–23:59 ET) — omit the time range
+# Whole regular trading session (09:30–16:00 ET) — omit the time range
 cd backend && npm run fetch-trades -- TSLA 2026-05-01
+
+# Extended session (pre-market + after-hours) — pass times explicitly
+cd backend && npm run fetch-trades -- TSLA 2026-05-01 04:00 20:00
 
 # Paid SIP feed
 cd backend && npm run fetch-trades -- AAPL 2026-05-01 09:30 16:00 --feed sip

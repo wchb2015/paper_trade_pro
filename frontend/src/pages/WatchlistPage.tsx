@@ -2,7 +2,7 @@ import { Icon } from '../components/Icon';
 import { PriceCell } from '../components/PriceCell';
 import { Sparkline } from '../components/Sparkline';
 import { Empty } from '../components/Empty';
-import { fmtPct, fmtVol } from '../lib/format';
+import { fmtPct } from '../lib/format';
 import { dayChange, dayChangePct } from '../lib/quote';
 import { getStockMeta } from '../lib/seedStocks';
 import { useBars } from '../hooks/useBars';
@@ -72,7 +72,7 @@ export function WatchlistPage({
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: '1.3fr 1fr 1fr 0.8fr 0.6fr 0.4fr',
+            gridTemplateColumns: '1.3fr 1fr 1fr 0.6fr 0.4fr',
             padding: '10px 16px',
             borderBottom: '1px solid var(--border)',
             fontSize: 11,
@@ -86,7 +86,6 @@ export function WatchlistPage({
           <div>Symbol</div>
           <div style={{ textAlign: 'right' }}>Last</div>
           <div style={{ textAlign: 'right' }}>Change</div>
-          <div style={{ textAlign: 'right' }}>Volume</div>
           <div style={{ textAlign: 'center' }}>Today</div>
           <div></div>
         </div>
@@ -104,7 +103,7 @@ export function WatchlistPage({
                 key={ticker}
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '1.3fr 1fr 1fr 0.8fr 0.6fr 0.4fr',
+                  gridTemplateColumns: '1.3fr 1fr 1fr 0.6fr 0.4fr',
                   padding: '14px 16px',
                   borderBottom: '1px solid var(--border)',
                   alignItems: 'center',
@@ -119,7 +118,7 @@ export function WatchlistPage({
                 </div>
                 <div
                   style={{
-                    gridColumn: '2 / 6',
+                    gridColumn: '2 / 5',
                     display: 'flex',
                     alignItems: 'center',
                     gap: 10,
@@ -160,12 +159,17 @@ export function WatchlistPage({
           const { ticker, m } = row;
           const pct = dayChangePct(m);
           const change = dayChange(m);
+          // Color "Last" by day direction (vs prev close). Null baseline →
+          // neutral. Matches the Change column so a row never disagrees
+          // with itself (Last green / Change red, etc).
+          const dayDir =
+            change == null || change === 0 ? null : change > 0 ? 'up' : 'down';
           return (
             <div
               key={ticker}
               style={{
                 display: 'grid',
-                gridTemplateColumns: '1.3fr 1fr 1fr 0.8fr 0.6fr 0.4fr',
+                gridTemplateColumns: '1.3fr 1fr 1fr 0.6fr 0.4fr',
                 padding: '14px 16px',
                 borderBottom: '1px solid var(--border)',
                 alignItems: 'center',
@@ -183,27 +187,32 @@ export function WatchlistPage({
                 <div className="company">{m.name}</div>
               </div>
               <div
-                className="mono tnum"
+                className={`mono tnum ${dayDir ?? ''}`}
                 style={{ textAlign: 'right', fontWeight: 500 }}
               >
                 <PriceCell value={m.price} prefix="$" />
               </div>
               <div style={{ textAlign: 'right' }}>
-                <div className={`mono tnum ${pct >= 0 ? 'up' : 'down'}`}>
-                  {change >= 0 ? '+' : ''}
-                  {change.toFixed(2)}
-                </div>
-                <div style={{ fontSize: 11.5, marginTop: 2 }}>
-                  <span className={`chip ${pct >= 0 ? 'up' : 'down'}`}>
-                    {fmtPct(pct)}
-                  </span>
-                </div>
-              </div>
-              <div
-                className="mono tnum"
-                style={{ textAlign: 'right', color: 'var(--text-muted)' }}
-              >
-                {m.volume != null ? fmtVol(m.volume) : '—'}
+                {change == null || pct == null ? (
+                  <div
+                    className="mono tnum"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    —
+                  </div>
+                ) : (
+                  <>
+                    <div className={`mono tnum ${pct >= 0 ? 'up' : 'down'}`}>
+                      {change >= 0 ? '+' : ''}
+                      {change.toFixed(2)}
+                    </div>
+                    <div style={{ fontSize: 11.5, marginTop: 2 }}>
+                      <span className={`chip ${pct >= 0 ? 'up' : 'down'}`}>
+                        {fmtPct(pct)}
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
               <div
                 style={{ display: 'flex', justifyContent: 'center' }}

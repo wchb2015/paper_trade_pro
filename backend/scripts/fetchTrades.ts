@@ -31,15 +31,22 @@ dotenv.config({ path: resolveDotEnv() });
 // Docs: https://docs.alpaca.markets/reference/stocktrades-1
 //
 // Usage:
-//   npx tsx backend/scripts/fetchTrades.ts TSLA 2026-05-01                # whole day (00:00–23:59 ET)
+//   npx tsx backend/scripts/fetchTrades.ts TSLA 2026-05-01                # regular hours only (09:30–16:00 ET)
 //   npx tsx backend/scripts/fetchTrades.ts TSLA 2026-05-01 09:30 10:30
+//   npx tsx backend/scripts/fetchTrades.ts TSLA 2026-05-01 04:00 20:00    # opt-in pre-market + after-hours
 //   npx tsx backend/scripts/fetchTrades.ts TSLA 2026-05-01 09:30 10:30 --feed iex
 //
 // Arguments:
 //   symbol   Stock ticker (e.g. TSLA)
 //   date     YYYY-MM-DD in America/New_York (e.g. 2026-05-01)
-//   startHm  HH:MM in America/New_York (e.g. 09:30) — optional, defaults to 00:00
-//   endHm    HH:MM in America/New_York (e.g. 10:30) — optional, defaults to 23:59
+//   startHm  HH:MM in America/New_York (e.g. 09:30) — optional, defaults to 09:30 (RTH open)
+//   endHm    HH:MM in America/New_York (e.g. 16:00) — optional, defaults to 16:00 (RTH close)
+//
+// Why RTH-only by default: pre-market (04:00–09:30 ET) and after-hours
+// (16:00–20:00 ET) on the IEX feed are extremely sparse — often minutes
+// between prints. At REPLAY_SPEED=1 that means the replay UI looks frozen
+// for many wall-clock minutes before the regular session starts. If you
+// explicitly want the extended session, pass the times.
 //
 // Flags:
 //   --feed iex|sip   (default: env ALPACA_FEED or 'iex')
@@ -99,9 +106,13 @@ function parseArgs(argv: string[]): Args {
     string | undefined,
     string | undefined,
   ];
-  // Default to the full ET day when no time range is supplied.
-  const startHm = startHmRaw ?? "00:00";
-  const endHm = endHmRaw ?? "23:59";
+  // Default to U.S. regular trading hours (RTH) in ET when no time range is
+  // supplied. Pre-market (04:00–09:30 ET) and after-hours (16:00–20:00 ET)
+  // on the IEX feed are too sparse to be useful for replay UX — they make
+  // the UI look frozen for many wall-clock minutes at REPLAY_SPEED=1. Pass
+  // explicit start/end times to opt into the extended session.
+  const startHm = startHmRaw ?? "09:30";
+  const endHm = endHmRaw ?? "16:00";
 
   if (!/^[A-Za-z.]{1,8}$/.test(symbol))
     throw new Error(`Bad symbol: ${symbol}`);

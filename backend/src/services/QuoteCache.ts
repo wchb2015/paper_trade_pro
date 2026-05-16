@@ -79,8 +79,8 @@ export class QuoteCache {
    * otherwise keep the cached value. AlpacaProvider's stream only carries
    * price+timestamp (other fields are null) — those fall through to the
    * cached snapshot. ReplayProvider's stream also carries running
-   * dayOpen/dayHigh/dayLow/volume, which need to overwrite the cached
-   * values so /quotes reflects the simulation's progress.
+   * dayOpen/dayHigh/dayLow, which need to overwrite the cached values so
+   * /quotes reflects the simulation's progress.
    */
   applyTick(quote: Quote): void {
     const existing = this.entries.get(quote.symbol);
@@ -99,7 +99,6 @@ export class QuoteCache {
       dayHigh: quote.dayHigh ?? existing.quote.dayHigh,
       dayLow: quote.dayLow ?? existing.quote.dayLow,
       prevClose: quote.prevClose ?? existing.quote.prevClose,
-      volume: quote.volume ?? existing.quote.volume,
     };
     this.entries.set(quote.symbol, { quote: merged, cachedAt: Date.now() });
   }

@@ -24,8 +24,6 @@ export interface Quote {
   dayLow: number | null;
   /** Previous session's close — useful for day-change %. */
   prevClose: number | null;
-  /** Today's cumulative volume. */
-  volume: number | null;
   /** Epoch ms of the latest trade. */
   timestamp: number;
   /** Provider freshness as of the response. */
@@ -113,4 +111,10 @@ export interface ProviderStatusPayload {
    * ticks. Absent under live providers.
    */
   replaySpeed?: number;
+  /**
+   * Replay-only: trading date being replayed (YYYY-MM-DD, ET wall-clock).
+   * Frontend renders it on the status pill so the user can tell at a glance
+   * which session they're watching. Absent under live providers.
+   */
+  replayDate?: string;
 }

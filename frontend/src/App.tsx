@@ -1,20 +1,20 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Icon, type IconName } from './components/Icon';
-import { TradeTicket } from './components/TradeTicket';
-import { AddStockModal } from './components/AddStockModal';
-import { NewAlertModal } from './components/NewAlertModal';
-import { DashboardPage } from './pages/DashboardPage';
-import { WatchlistPage } from './pages/WatchlistPage';
-import { DetailPage } from './pages/DetailPage';
-import { PositionsPage } from './pages/PositionsPage';
-import { OrdersPage } from './pages/OrdersPage';
-import { AlertsPage } from './pages/AlertsPage';
-import { AccountPage } from './pages/AccountPage';
-import { useMarket } from './hooks/useMarket';
-import { useReplayClock } from './hooks/useReplayClock';
-import { usePortfolio } from './hooks/usePortfolio';
-import { fmtMoney, fmtPct } from './lib/format';
-import { STOCK_META } from './lib/seedStocks';
+import { useEffect, useMemo, useState } from "react";
+import { Icon, type IconName } from "./components/Icon";
+import { TradeTicket } from "./components/TradeTicket";
+import { AddStockModal } from "./components/AddStockModal";
+import { NewAlertModal } from "./components/NewAlertModal";
+import { DashboardPage } from "./pages/DashboardPage";
+import { WatchlistPage } from "./pages/WatchlistPage";
+import { DetailPage } from "./pages/DetailPage";
+import { PositionsPage } from "./pages/PositionsPage";
+import { OrdersPage } from "./pages/OrdersPage";
+import { AlertsPage } from "./pages/AlertsPage";
+import { AccountPage } from "./pages/AccountPage";
+import { useMarket } from "./hooks/useMarket";
+import { useReplayClock } from "./hooks/useReplayClock";
+import { usePortfolio } from "./hooks/usePortfolio";
+import { fmtMoney, fmtPct } from "./lib/format";
+import { STOCK_META } from "./lib/seedStocks";
 import type {
   AlertCtx,
   Market,
@@ -22,12 +22,12 @@ import type {
   Theme,
   TradeCtx,
   Tweaks,
-} from './lib/types';
+} from "./lib/types";
 
 const TWEAK_DEFAULTS: Tweaks = {
-  accent: '#4f46e5',
-  gainColor: '#059669',
-  lossColor: '#e11d48',
+  accent: "#4f46e5",
+  gainColor: "#059669",
+  lossColor: "#e11d48",
 };
 
 function getStored<T>(key: string, fallback: T): T {
@@ -41,13 +41,13 @@ function getStored<T>(key: string, fallback: T): T {
 
 export default function App() {
   const [theme, setTheme] = useState<Theme>(() =>
-    getStored<Theme>('ptp_theme', 'light'),
+    getStored<Theme>("ptp_theme", "light"),
   );
   const [page, setPage] = useState<PageKey>(() =>
-    getStored<PageKey>('ptp_page', 'dashboard'),
+    getStored<PageKey>("ptp_page", "dashboard"),
   );
   const [detailTicker, setDetailTicker] = useState<string>(() =>
-    getStored<string>('ptp_detail', 'AAPL'),
+    getStored<string>("ptp_detail", "AAPL"),
   );
   const [tradeCtx, setTradeCtx] = useState<TradeCtx | null>(null);
   const [alertCtx, setAlertCtx] = useState<AlertCtx | null>(null);
@@ -85,7 +85,7 @@ export default function App() {
     portfolio.positions.forEach((p) => set.add(p.ticker));
     portfolio.orders.forEach((o) => set.add(o.ticker));
     portfolio.alerts.forEach((a) => set.add(a.ticker));
-    if (page === 'detail' && detailTicker) set.add(detailTicker);
+    if (page === "detail" && detailTicker) set.add(detailTicker);
     if (tradeCtx?.ticker) set.add(tradeCtx.ticker);
     if (alertCtx?.ticker) set.add(alertCtx.ticker);
     // Include the static catalog so the Add modal can search + display prices.
@@ -102,8 +102,16 @@ export default function App() {
     alertCtx?.ticker,
   ]);
 
-  const { market, unavailable, liveConnected, providerStatus, provider, error, replayClock } =
-    useMarket(interestingSymbols);
+  const {
+    market,
+    unavailable,
+    liveConnected,
+    providerStatus,
+    provider,
+    error,
+    replayClock,
+    replayDate,
+  } = useMarket(interestingSymbols);
   const replaySimMs = useReplayClock(replayClock);
 
   // Mirror the live market into `marketView` so usePortfolio sees fresh data.
@@ -113,9 +121,9 @@ export default function App() {
   }, [market]);
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.setAttribute("data-theme", theme);
     try {
-      localStorage.setItem('ptp_theme', theme);
+      localStorage.setItem("ptp_theme", theme);
     } catch {
       /* ignore */
     }
@@ -123,7 +131,7 @@ export default function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem('ptp_page', page);
+      localStorage.setItem("ptp_page", page);
     } catch {
       /* ignore */
     }
@@ -131,7 +139,7 @@ export default function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem('ptp_detail', detailTicker);
+      localStorage.setItem("ptp_detail", detailTicker);
     } catch {
       /* ignore */
     }
@@ -139,9 +147,9 @@ export default function App() {
 
   useEffect(() => {
     const r = document.documentElement.style;
-    r.setProperty('--accent', tweaks.accent);
-    r.setProperty('--up', tweaks.gainColor);
-    r.setProperty('--down', tweaks.lossColor);
+    r.setProperty("--accent", tweaks.accent);
+    r.setProperty("--up", tweaks.gainColor);
+    r.setProperty("--down", tweaks.lossColor);
   }, [tweaks]);
 
   const setTweak = <K extends keyof Tweaks>(k: K, v: Tweaks[K]) => {
@@ -157,7 +165,7 @@ export default function App() {
     (a) => a.active && !a.triggeredAt,
   ).length;
   const workingOrders = portfolio.orders.filter(
-    (o) => o.status === 'pending' || o.status === 'pending_fill',
+    (o) => o.status === "pending" || o.status === "pending_fill",
   ).length;
 
   // Reconcile valuation using the live market.
@@ -167,7 +175,7 @@ export default function App() {
     portfolio.positions.forEach((p) => {
       const m = market[p.ticker];
       if (!m) return;
-      if (p.side === 'long') {
+      if (p.side === "long") {
         marketValue += m.price * p.qty;
         unrealizedPnL += (m.price - p.avgPrice) * p.qty;
       } else {
@@ -176,7 +184,7 @@ export default function App() {
       }
     });
     const shortDiff = portfolio.positions
-      .filter((p) => p.side === 'short')
+      .filter((p) => p.side === "short")
       .reduce((s, p) => {
         const m = market[p.ticker];
         if (!m) return s;
@@ -195,9 +203,10 @@ export default function App() {
 
   // Prefer the live valuation (reflects real market) over the empty-market
   // fallback returned by usePortfolio.
-  const effectiveValuation = liveValuation.marketValue > 0 || portfolio.positions.length === 0
-    ? liveValuation
-    : valuation;
+  const effectiveValuation =
+    liveValuation.marketValue > 0 || portfolio.positions.length === 0
+      ? liveValuation
+      : valuation;
 
   const totalValue = effectiveValuation.equity;
   const totalPct =
@@ -211,36 +220,36 @@ export default function App() {
     icon: IconName;
     badge?: number | null;
   }[] = [
-    { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
+    { id: "dashboard", label: "Dashboard", icon: "dashboard" },
     {
-      id: 'watchlist',
-      label: 'Watchlist',
-      icon: 'watchlist',
+      id: "watchlist",
+      label: "Watchlist",
+      icon: "watchlist",
       badge: portfolio.watchlist.length,
     },
     {
-      id: 'positions',
-      label: 'Positions',
-      icon: 'positions',
+      id: "positions",
+      label: "Positions",
+      icon: "positions",
       badge: portfolio.positions.length || null,
     },
     {
-      id: 'orders',
-      label: 'Orders',
-      icon: 'orders',
+      id: "orders",
+      label: "Orders",
+      icon: "orders",
       badge: workingOrders || null,
     },
     {
-      id: 'alerts',
-      label: 'Alerts',
-      icon: 'alerts',
+      id: "alerts",
+      label: "Alerts",
+      icon: "alerts",
       badge: activeAlerts || null,
     },
   ];
 
   const renderPage = () => {
     switch (page) {
-      case 'dashboard':
+      case "dashboard":
         return (
           <DashboardPage
             market={market}
@@ -250,7 +259,7 @@ export default function App() {
             setTradeCtx={setTradeCtx}
           />
         );
-      case 'watchlist':
+      case "watchlist":
         return (
           <WatchlistPage
             market={market}
@@ -262,7 +271,7 @@ export default function App() {
             setTradeCtx={setTradeCtx}
           />
         );
-      case 'detail':
+      case "detail":
         return (
           <DetailPage
             ticker={detailTicker}
@@ -274,7 +283,7 @@ export default function App() {
             onNavigate={onNavigate}
           />
         );
-      case 'positions':
+      case "positions":
         return (
           <PositionsPage
             market={market}
@@ -283,7 +292,7 @@ export default function App() {
             setTradeCtx={setTradeCtx}
           />
         );
-      case 'orders':
+      case "orders":
         return (
           <OrdersPage
             market={market}
@@ -291,17 +300,17 @@ export default function App() {
             cancelOrder={cancelOrder}
           />
         );
-      case 'alerts':
+      case "alerts":
         return (
           <AlertsPage
             market={market}
             portfolio={portfolio}
             toggleAlert={toggleAlert}
             removeAlert={removeAlert}
-            onAdd={() => setAlertCtx({ ticker: detailTicker || 'AAPL' })}
+            onAdd={() => setAlertCtx({ ticker: detailTicker || "AAPL" })}
           />
         );
-      case 'account':
+      case "account":
         return (
           <AccountPage
             portfolio={portfolio}
@@ -319,29 +328,41 @@ export default function App() {
   const statusPill = (() => {
     if (!liveConnected) {
       return {
-        label: 'Offline',
-        dot: 'var(--down)',
-        title: 'Backend socket disconnected',
+        label: "Offline",
+        dot: "var(--down)",
+        title: "Backend socket disconnected",
       } as const;
     }
-    if (providerStatus === 'live') {
+    // Replay mode: pill always reflects the replay session, never falls back
+    // to "Unavailable" during the boot gap before the watchlist subscribes.
+    // Per-symbol "no NDJSON file" cases are surfaced inline on the Watchlist.
+    if (provider === "replay") {
       return {
-        label: `Live · ${provider || 'provider'}`,
-        dot: 'var(--up)',
+        label: replayDate ? `Replay · ${replayDate}` : "Replay",
+        dot: "#3b82f6",
+        title: replayDate
+          ? `Replaying ${replayDate} (ET)`
+          : "Replay session",
+      } as const;
+    }
+    if (providerStatus === "live") {
+      return {
+        label: `Live · ${provider || "provider"}`,
+        dot: "var(--up)",
         title: `${provider} stream connected`,
       } as const;
     }
-    if (providerStatus === 'stale') {
+    if (providerStatus === "stale") {
       return {
-        label: 'Stale',
-        dot: '#f59e0b',
-        title: 'No recent ticks — market may be closed',
+        label: "Stale",
+        dot: "#f59e0b",
+        title: "No recent ticks — market may be closed",
       } as const;
     }
     return {
-      label: 'Unavailable',
-      dot: 'var(--down)',
-      title: error ?? 'Provider unavailable',
+      label: "Unavailable",
+      dot: "var(--down)",
+      title: error ?? "Provider unavailable",
     } as const;
   })();
 
@@ -362,7 +383,7 @@ export default function App() {
           <div className="ps-item">
             <span className="ps-label">All-time</span>
             <span
-              className={`ps-value mono tnum ${totalPct >= 0 ? 'up' : 'down'}`}
+              className={`ps-value mono tnum ${totalPct >= 0 ? "up" : "down"}`}
             >
               {fmtPct(totalPct)}
             </span>
@@ -379,7 +400,7 @@ export default function App() {
           <span
             className="btn ghost sm"
             title={statusPill.title}
-            style={{ cursor: 'default' }}
+            style={{ cursor: "default" }}
           >
             {statusPill.label}
             {replaySimMs !== null && (
@@ -388,18 +409,20 @@ export default function App() {
                 style={{
                   marginLeft: 6,
                   paddingLeft: 6,
-                  borderLeft: '1px solid var(--border)',
-                  color: 'var(--text-muted)',
+                  borderLeft: "1px solid var(--border)",
+                  color: "var(--text-muted)",
                   fontSize: 11.5,
                 }}
-                title={`Replay session clock @ ${replayClock?.speed ?? 1}x`}
+                title={`Replay session clock @ ${replayClock?.speed ?? 1}x (America/New_York)`}
               >
                 {new Date(replaySimMs).toLocaleTimeString([], {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                  second: '2-digit',
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  second: "2-digit",
                   hour12: false,
+                  timeZone: "America/New_York",
                 })}
+                {" ET"}
               </span>
             )}
             <span
@@ -409,12 +432,12 @@ export default function App() {
                 borderRadius: 7,
                 background: statusPill.dot,
                 boxShadow:
-                  providerStatus === 'live'
-                    ? '0 0 0 3px rgba(5,150,105,0.18)'
-                    : 'none',
+                  providerStatus === "live"
+                    ? "0 0 0 3px rgba(5,150,105,0.18)"
+                    : "none",
                 marginLeft: 2,
                 animation:
-                  providerStatus === 'live' ? 'pulse 1.6s infinite' : 'none',
+                  providerStatus === "live" ? "pulse 1.6s infinite" : "none",
               }}
             />
           </span>
@@ -427,17 +450,17 @@ export default function App() {
           </button>
           <button
             className="btn ghost icon-only"
-            onClick={() => onNavigate('account')}
+            onClick={() => onNavigate("account")}
             title="Account"
           >
             <Icon name="account" size={16} />
           </button>
           <button
             className="btn ghost icon-only"
-            onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+            onClick={() => setTheme(theme === "light" ? "dark" : "light")}
             title="Toggle theme"
           >
-            <Icon name={theme === 'light' ? 'moon' : 'sun'} size={16} />
+            <Icon name={theme === "light" ? "moon" : "sun"} size={16} />
           </button>
         </div>
       </div>
@@ -448,7 +471,7 @@ export default function App() {
         {navItems.map((item) => (
           <button
             key={item.id}
-            className={`nav-item ${page === item.id ? 'active' : ''}`}
+            className={`nav-item ${page === item.id ? "active" : ""}`}
             onClick={() => onNavigate(item.id)}
           >
             <Icon name={item.icon} className="nav-icon" size={16} />
@@ -458,8 +481,8 @@ export default function App() {
         ))}
         <div className="nav-group-label">Settings</div>
         <button
-          className={`nav-item ${page === 'account' ? 'active' : ''}`}
-          onClick={() => onNavigate('account')}
+          className={`nav-item ${page === "account" ? "active" : ""}`}
+          onClick={() => onNavigate("account")}
         >
           <Icon name="account" className="nav-icon" size={16} />
           <span>Account</span>
@@ -467,15 +490,15 @@ export default function App() {
 
         <div
           style={{
-            marginTop: 'auto',
-            padding: '12px 10px',
+            marginTop: "auto",
+            padding: "12px 10px",
             fontSize: 11,
-            color: 'var(--text-dim)',
+            color: "var(--text-dim)",
             lineHeight: 1.5,
           }}
         >
           Paper trading — simulated funds, real market data
-          {provider ? ` (${provider})` : ''}.
+          {provider ? ` (${provider})` : ""}.
         </div>
       </aside>
 
@@ -528,28 +551,28 @@ export default function App() {
           <div className="tweaks-body">
             <div className="tweaks-row">
               <label className="label">Accent color</label>
-              <div style={{ display: 'flex', gap: 6 }}>
+              <div style={{ display: "flex", gap: 6 }}>
                 {[
-                  '#4f46e5',
-                  '#0ea5e9',
-                  '#f59e0b',
-                  '#ec4899',
-                  '#14b8a6',
-                  '#111111',
+                  "#4f46e5",
+                  "#0ea5e9",
+                  "#f59e0b",
+                  "#ec4899",
+                  "#14b8a6",
+                  "#111111",
                 ].map((c) => (
                   <button
                     key={c}
-                    onClick={() => setTweak('accent', c)}
+                    onClick={() => setTweak("accent", c)}
                     style={{
                       width: 28,
                       height: 28,
-                      borderRadius: '50%',
+                      borderRadius: "50%",
                       background: c,
                       border:
                         tweaks.accent === c
-                          ? '2px solid var(--text)'
-                          : '2px solid var(--border)',
-                      cursor: 'pointer',
+                          ? "2px solid var(--text)"
+                          : "2px solid var(--border)",
+                      cursor: "pointer",
                     }}
                   />
                 ))}
@@ -559,24 +582,24 @@ export default function App() {
               <label className="label">Gain / Loss palette</label>
               <div
                 className="segmented"
-                style={{ display: 'flex', width: '100%' }}
+                style={{ display: "flex", width: "100%" }}
               >
                 <button
-                  className={tweaks.gainColor === '#059669' ? 'active' : ''}
+                  className={tweaks.gainColor === "#059669" ? "active" : ""}
                   style={{ flex: 1 }}
                   onClick={() => {
-                    setTweak('gainColor', '#059669');
-                    setTweak('lossColor', '#e11d48');
+                    setTweak("gainColor", "#059669");
+                    setTweak("lossColor", "#e11d48");
                   }}
                 >
                   Green / Red
                 </button>
                 <button
-                  className={tweaks.gainColor === '#2563eb' ? 'active' : ''}
+                  className={tweaks.gainColor === "#2563eb" ? "active" : ""}
                   style={{ flex: 1 }}
                   onClick={() => {
-                    setTweak('gainColor', '#2563eb');
-                    setTweak('lossColor', '#ea580c');
+                    setTweak("gainColor", "#2563eb");
+                    setTweak("lossColor", "#ea580c");
                   }}
                 >
                   Blue / Orange
@@ -587,19 +610,19 @@ export default function App() {
               <label className="label">Theme</label>
               <div
                 className="segmented"
-                style={{ display: 'flex', width: '100%' }}
+                style={{ display: "flex", width: "100%" }}
               >
                 <button
-                  className={theme === 'light' ? 'active' : ''}
+                  className={theme === "light" ? "active" : ""}
                   style={{ flex: 1 }}
-                  onClick={() => setTheme('light')}
+                  onClick={() => setTheme("light")}
                 >
                   Light
                 </button>
                 <button
-                  className={theme === 'dark' ? 'active' : ''}
+                  className={theme === "dark" ? "active" : ""}
                   style={{ flex: 1 }}
-                  onClick={() => setTheme('dark')}
+                  onClick={() => setTheme("dark")}
                 >
                   Dark
                 </button>

@@ -291,7 +291,6 @@ export class AlpacaProvider implements PriceProvider {
         dayHigh: null,
         dayLow: null,
         prevClose: null,
-        volume: null,
         timestamp,
         status: 'live',
       };
@@ -346,7 +345,6 @@ function alpacaSnapshotToQuote(symbol: string, snap: AlpacaSnapshot): Quote {
     dayHigh: daily?.h ?? null,
     dayLow: daily?.l ?? null,
     prevClose: prevDaily?.c ?? null,
-    volume: daily?.v ?? null,
     timestamp,
     status: 'live',
   };

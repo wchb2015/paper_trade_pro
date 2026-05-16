@@ -76,12 +76,12 @@ export class ReplayProvider implements PriceProvider {
   /**
    * Per-symbol intraday accumulators updated as ticks emit. Seeded with the
    * file's first trade on first read so `fetchQuotes` has a non-null `dayOpen`
-   * immediately. `high/low/volume` reflect the simulation's progress, not the
+   * immediately. `high/low` reflect the simulation's progress, not the
    * pre-computed full-day total — that matches the running replay clock.
    */
   private dayStats = new Map<
     string,
-    { open: number; high: number; low: number; volume: number }
+    { open: number; high: number; low: number }
   >();
 
   /** Anchors for sim-clock ↔ wall-clock mapping. */
@@ -134,33 +134,21 @@ export class ReplayProvider implements PriceProvider {
     return out;
   }
 
-  /**
-   * Initialize the day's OHLCV accumulator. Volume starts at 0 — it only
-   * accumulates from trades emitted by the scheduler, so peeking the first
-   * trade in fetchQuotes doesn't double-count it once that same trade is
-   * later emitted by the heap drain.
-   */
+  /** Initialize the day's OHLC accumulator on first sight of a symbol. */
   private seedDayStats(symbol: string, price: number): void {
     if (this.dayStats.has(symbol)) return;
-    this.dayStats.set(symbol, {
-      open: price,
-      high: price,
-      low: price,
-      volume: 0,
-    });
+    this.dayStats.set(symbol, { open: price, high: price, low: price });
   }
 
-  /** Fold a newly-emitted trade into the running OHLCV stats. */
-  private updateDayStats(symbol: string, price: number, size: number): void {
+  /** Fold a newly-emitted trade into the running OHLC stats. */
+  private updateDayStats(symbol: string, price: number): void {
     const cur = this.dayStats.get(symbol);
     if (!cur) {
       this.seedDayStats(symbol, price);
-      this.dayStats.get(symbol)!.volume += size;
       return;
     }
     if (price > cur.high) cur.high = price;
     if (price < cur.low) cur.low = price;
-    cur.volume += size;
   }
 
   private buildQuoteForSymbol(
@@ -178,10 +166,10 @@ export class ReplayProvider implements PriceProvider {
       dayHigh: stats?.high ?? null,
       dayLow: stats?.low ?? null,
       // Replay only loads a single trading day — there is no prior file to
-      // derive prevClose from. The frontend's dayBase() falls back through
-      // dayOpen anyway, so percent-change still works.
+      // derive prevClose from. TODO: have fetchTrades.ts persist yesterday's
+      // close in <SYMBOL>.meta.json and read it here so the day-change column
+      // can render in replay mode.
       prevClose: null,
-      volume: stats?.volume ?? null,
       timestamp,
       status: "live",
     };
@@ -300,6 +288,10 @@ export class ReplayProvider implements PriceProvider {
 
   getReplaySpeed(): number {
     return this.cfg.replay.speed;
+  }
+
+  getReplayDate(): string {
+    return this.cfg.replay.date;
   }
 
   getUnavailableSymbols(symbols: string[]): Record<string, UnavailableReason> {
@@ -461,7 +453,7 @@ export class ReplayProvider implements PriceProvider {
     // as stale. Preserve real timestamps in lastPrice for snapshots.
     const emittedTs = Date.now();
     this.lastPrice.set(symbol, { price: trade.p, timestamp: emittedTs });
-    this.updateDayStats(symbol, trade.p, trade.s ?? 0);
+    this.updateDayStats(symbol, trade.p);
     const quote: Quote = this.buildQuoteForSymbol(symbol, trade.p, emittedTs);
     // Pass tsMs as `simTimestamp` so the frontend can show a running replay
     // clock anchored to the historical session, not wall-clock time.

@@ -143,11 +143,13 @@ export class PriceStreamHub {
       );
     }
     const replaySpeed = this.provider.getReplaySpeed?.();
+    const replayDate = this.provider.getReplayDate?.();
     const next: ProviderStatusPayload = {
       status,
       provider: this.provider.name,
       ...(detail !== undefined ? { message: detail } : {}),
       ...(replaySpeed !== undefined ? { replaySpeed } : {}),
+      ...(replayDate !== undefined ? { replayDate } : {}),
     };
     this.status = next;
     this.io.emit(SOCKET_EVENTS.PROVIDER_STATUS, next);

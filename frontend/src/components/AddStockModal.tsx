@@ -55,7 +55,7 @@ export function AddStockModal({
         {results.map((s) => {
           const m = market[s.ticker];
           const added = existing.includes(s.ticker);
-          const pct = m ? dayChangePct(m) : 0;
+          const pct = m ? dayChangePct(m) : null;
           return (
             <div
               key={s.ticker}
@@ -74,12 +74,20 @@ export function AddStockModal({
               </div>
               <div className="mono tnum" style={{ textAlign: 'right' }}>
                 <div>{money(m?.price ?? null)}</div>
-                <div
-                  className={pct >= 0 ? 'up' : 'down'}
-                  style={{ fontSize: 11.5 }}
-                >
-                  {fmtPct(pct)}
-                </div>
+                {pct == null ? (
+                  <div
+                    style={{ fontSize: 11.5, color: 'var(--text-muted)' }}
+                  >
+                    —
+                  </div>
+                ) : (
+                  <div
+                    className={pct >= 0 ? 'up' : 'down'}
+                    style={{ fontSize: 11.5 }}
+                  >
+                    {fmtPct(pct)}
+                  </div>
+                )}
               </div>
               <button
                 className={`btn sm ${added ? '' : 'primary'}`}

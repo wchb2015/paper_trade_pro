@@ -16,22 +16,25 @@ export function askOrPrice(s: StockSnapshot): number {
 }
 
 /**
- * Denominator for a day-change %. If we don't have a day-open yet, fall back
- * to prev close, and ultimately the current price (yielding 0% change).
+ * Day-change baseline: yesterday's close, full stop. Returns null when the
+ * provider hasn't supplied prevClose (e.g. replay mode today — see TODO in
+ * ReplayProvider.buildQuoteForSymbol). Callers render "—" when null.
  */
-export function dayBase(s: StockSnapshot): number {
-  return s.dayOpen ?? s.prevClose ?? s.price;
+export function dayBase(s: StockSnapshot): number | null {
+  return s.prevClose;
 }
 
-/** Day change as an absolute dollar amount. */
-export function dayChange(s: StockSnapshot): number {
-  return s.price - dayBase(s);
-}
-
-/** Day change as a percent (0 if we have no baseline). */
-export function dayChangePct(s: StockSnapshot): number {
+/** Day change as an absolute dollar amount; null when we have no baseline. */
+export function dayChange(s: StockSnapshot): number | null {
   const base = dayBase(s);
-  if (base === 0) return 0;
+  if (base == null) return null;
+  return s.price - base;
+}
+
+/** Day change as a percent; null when we have no baseline. */
+export function dayChangePct(s: StockSnapshot): number | null {
+  const base = dayBase(s);
+  if (base == null || base === 0) return null;
   return ((s.price - base) / base) * 100;
 }
 
