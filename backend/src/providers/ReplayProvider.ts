@@ -111,7 +111,7 @@ export class ReplayProvider implements PriceProvider {
 
   async fetchQuotes(symbols: string[]): Promise<Record<string, Quote>> {
     const normalized = symbols.map((s) => s.toUpperCase());
-    log.debug(
+    log.info(
       {
         operation: "replay.fetchQuotes",
         count: normalized.length,

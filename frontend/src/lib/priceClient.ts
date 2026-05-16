@@ -32,6 +32,11 @@ export class PriceClient {
   private socket: Socket<ServerToClientEvents, ClientToServerEvents> | null =
     null;
   private readonly baseUrl: string;
+  // Coalesce concurrent ensureSubscribed() calls with identical args. React
+  // StrictMode in dev double-invokes effect bodies, so without this we'd fire
+  // POST /api/subscriptions twice on every symbol change. Keyed by the
+  // sorted symbol set; cleared once the in-flight promise settles.
+  private inflightSubs = new Map<string, Promise<SubscriptionsResponse>>();
 
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl;
@@ -74,21 +79,25 @@ export class PriceClient {
   }
 
   /**
-   * Tell the backend to ensure its WS stream includes `symbols`. Additive by
-   * default — safe to call from any component on mount. Errors throw
-   * ApiError + fire a toast via configureApi.
+   * Mirror the backend's WS subscription set to exactly `symbols` — the
+   * full union of UI interest (watchlist ∪ positions ∪ orders ∪ alerts ∪
+   * detail/trade/alert tickers). The server uses replace semantics so
+   * symbols dropped from the union are unsubscribed upstream. Errors
+   * throw ApiError + fire a toast via configureApi.
    */
-  async ensureSubscribed(
-    symbols: string[],
-    opts: { replace?: boolean } = {},
-  ): Promise<SubscriptionsResponse> {
-    return api<SubscriptionsResponse>(`${this.baseUrl}/api/subscriptions`, {
+  async ensureSubscribed(symbols: string[]): Promise<SubscriptionsResponse> {
+    const upper = symbols.map((s) => s.toUpperCase());
+    const key = [...upper].sort().join(",");
+    const existing = this.inflightSubs.get(key);
+    if (existing) return existing;
+    const p = api<SubscriptionsResponse>(`${this.baseUrl}/api/subscriptions`, {
       method: "POST",
-      body: JSON.stringify({
-        symbols: symbols.map((s) => s.toUpperCase()),
-        replace: !!opts.replace,
-      }),
+      body: JSON.stringify({ symbols: upper }),
+    }).finally(() => {
+      this.inflightSubs.delete(key);
     });
+    this.inflightSubs.set(key, p);
+    return p;
   }
 
   /** Open the socket and start pushing ticks to the subscriber. */

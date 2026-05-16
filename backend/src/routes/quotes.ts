@@ -200,18 +200,20 @@ export function createQuotesRouter(deps: RouteDeps): Router {
     }
   });
 
+  // Body is the *full* set of symbols this client cares about. The hub
+  // mirrors it (replace semantics) so removing a symbol from the watchlist
+  // unsubscribes it from the upstream WS. The internal additive caller is
+  // GET /quotes — see deps.hub.ensureSubscribed there.
   router.post("/subscriptions", async (req: Request, res: Response) => {
     try {
-      const body = (req.body ?? {}) as {
-        symbols?: unknown;
-        replace?: unknown;
-      };
+      const body = (req.body ?? {}) as { symbols?: unknown };
       const raw = body.symbols;
       const list = Array.isArray(raw)
         ? raw.filter((x): x is string => typeof x === "string")
         : [];
-      const replace = body.replace === true;
-      const subscribed = await deps.hub.ensureSubscribed(list, { replace });
+      const subscribed = await deps.hub.ensureSubscribed(list, {
+        replace: true,
+      });
       const out: SubscriptionsResponse = { subscribed };
       return res.json(out);
     } catch (err) {

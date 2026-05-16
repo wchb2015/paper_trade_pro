@@ -249,6 +249,8 @@ export function useMarket(symbols: string[]): UseMarketResult {
       // the next call. api() already toasted — we reflect the state as
       // 'unavailable' via the provider-status handler. Don't silently
       // swallow: capture into `error` so the UI can surface it too.
+      // `symbolList` is the *full* union of UI interest, gated on
+      // portfolioLoaded so we never briefly send `[]`.
       priceClient.ensureSubscribed(symbolList).catch((err: unknown) => {
         setError((err as Error).message);
       });

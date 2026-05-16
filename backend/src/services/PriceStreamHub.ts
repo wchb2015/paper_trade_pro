@@ -55,9 +55,13 @@ export class PriceStreamHub {
   }
 
   /**
-   * Ensure `symbols` are part of the subscription set. Additive — we never
-   * remove unless `replace: true` is passed. For a small single-user app
-   * this is simpler than refcounting per-client.
+   * Ensure `symbols` are part of the subscription set.
+   *   - `replace: false` (default) — additive. Used by GET /quotes, which
+   *     only knows the symbols of the current snapshot request.
+   *   - `replace: true` — mirror exactly. Used by POST /subscriptions, where
+   *     the client sends its full union and expects removed symbols to be
+   *     unsubscribed upstream.
+   * For a small single-user app this is simpler than refcounting per-client.
    */
   async ensureSubscribed(
     symbols: string[],

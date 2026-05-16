@@ -76,9 +76,14 @@ export default function App() {
     addAlert,
     removeAlert,
     toggleAlert,
+    loaded: portfolioLoaded,
   } = usePortfolio(marketView);
 
+  // Hold off on building the symbol union (and therefore the first
+  // POST /api/subscriptions) until the initial GET /api/portfolio resolves.
+  // Otherwise we fire once with [] (no-op), then again with the real set.
   const interestingSymbols = useMemo(() => {
+    if (!portfolioLoaded) return [];
     const set = new Set<string>();
     portfolio.watchlist.forEach((t) => set.add(t));
     portfolio.positions.forEach((p) => set.add(p.ticker));
@@ -89,6 +94,7 @@ export default function App() {
     if (alertCtx?.ticker) set.add(alertCtx.ticker);
     return Array.from(set).map((s) => s.toUpperCase());
   }, [
+    portfolioLoaded,
     portfolio.watchlist,
     portfolio.positions,
     portfolio.orders,
