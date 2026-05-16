@@ -93,7 +93,6 @@ export function DetailPage({
     ['Bid', money(m.bid)],
     ['Ask', money(m.ask)],
     ['Prev Close', money(m.prevClose)],
-    ['Sector', m.sector],
   ];
 
   return (
@@ -112,9 +111,6 @@ export function DetailPage({
         >
           ← Watchlist
         </button>
-        <span style={{ color: 'var(--text-dim)', fontSize: 12 }}>
-          {m.sector}
-        </span>
       </div>
       <div className="page-header">
         <div>
@@ -124,9 +120,6 @@ export function DetailPage({
             <h1 className="page-title" style={{ margin: 0 }}>
               {ticker}
             </h1>
-            <span style={{ color: 'var(--text-muted)', fontSize: 14 }}>
-              {m.name}
-            </span>
           </div>
           <div
             style={{

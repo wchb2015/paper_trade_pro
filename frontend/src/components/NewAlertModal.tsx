@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { Modal } from './Modal';
-import { STOCK_META } from '../lib/seedStocks';
 import type { AlertCondition, Market } from '../lib/types';
 
 interface NewAlertModalProps {
@@ -16,6 +15,8 @@ interface NewAlertModalProps {
   }) => void;
 }
 
+const TICKER_RE = /^[A-Z][A-Z0-9.]{0,7}$/;
+
 export function NewAlertModal({
   open,
   onClose,
@@ -23,26 +24,45 @@ export function NewAlertModal({
   ticker,
   addAlert,
 }: NewAlertModalProps) {
-  const [sel, setSel] = useState(ticker || 'AAPL');
+  const [sel, setSel] = useState(ticker || '');
   const [condition, setCondition] = useState<AlertCondition>('above');
   const [price, setPrice] = useState('');
   const [note, setNote] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
-      const t = ticker || 'AAPL';
+      const t = ticker || '';
       setSel(t);
-      const m = market[t];
-      if (m) setPrice(m.price.toFixed(2));
+      const m = t ? market[t] : undefined;
+      setPrice(m ? m.price.toFixed(2) : '');
       setNote('');
+      setError(null);
     }
   }, [open, ticker, market]);
 
-  const m = market[sel];
+  const m = sel ? market[sel] : undefined;
 
   const submit = () => {
-    if (!price) return;
-    addAlert({ ticker: sel, condition, price: +price, note });
+    const sym = sel.trim().toUpperCase();
+    if (!sym) {
+      setError('Enter a ticker symbol.');
+      return;
+    }
+    if (!TICKER_RE.test(sym)) {
+      setError('Use letters, digits, or dot (e.g. AAPL, BRK.B).');
+      return;
+    }
+    if (!price) {
+      setError('Enter a trigger price.');
+      return;
+    }
+    const numericPrice = Number(price);
+    if (!Number.isFinite(numericPrice) || numericPrice <= 0) {
+      setError('Trigger price must be a positive number.');
+      return;
+    }
+    addAlert({ ticker: sym, condition, price: numericPrice, note });
     onClose();
   };
 
@@ -50,17 +70,18 @@ export function NewAlertModal({
     <Modal open={open} onClose={onClose} title="New Price Alert" size="sm">
       <div className="field" style={{ marginBottom: 12 }}>
         <label className="label">Symbol</label>
-        <select
-          className="select"
+        <input
+          className="input mono"
+          placeholder="e.g. AAPL"
           value={sel}
-          onChange={(e) => setSel(e.target.value)}
-        >
-          {STOCK_META.map((s) => (
-            <option key={s.ticker} value={s.ticker}>
-              {s.ticker} · {s.name}
-            </option>
-          ))}
-        </select>
+          onChange={(e) => {
+            setSel(e.target.value.toUpperCase());
+            if (error) setError(null);
+          }}
+          autoCapitalize="characters"
+          autoCorrect="off"
+          spellCheck={false}
+        />
       </div>
       <div
         style={{
@@ -74,7 +95,7 @@ export function NewAlertModal({
           className="mono tnum"
           style={{ color: 'var(--text)', fontWeight: 600 }}
         >
-          ${m?.price.toFixed(2)}
+          {m ? `$${m.price.toFixed(2)}` : '—'}
         </span>
       </div>
       <div
@@ -118,11 +139,26 @@ export function NewAlertModal({
           placeholder="Why this alert?"
         />
       </div>
+      {error && (
+        <div
+          role="alert"
+          style={{
+            padding: '8px 10px',
+            marginBottom: 12,
+            borderRadius: 6,
+            background: 'rgba(225, 29, 72, 0.10)',
+            color: 'var(--down)',
+            fontSize: 12.5,
+          }}
+        >
+          {error}
+        </div>
+      )}
       <button
         className="btn accent"
         style={{ width: '100%', padding: 11 }}
         onClick={submit}
-        disabled={!price}
+        disabled={!price || !sel.trim()}
       >
         Create Alert
       </button>

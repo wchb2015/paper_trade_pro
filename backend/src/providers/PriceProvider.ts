@@ -1,4 +1,5 @@
 import type {
+  AssetLookup,
   Bar,
   BarTimeframe,
   Quote,
@@ -66,6 +67,16 @@ export interface PriceProvider {
    * in-memory lookup). Don't make HTTP calls here.
    */
   getUnavailableSymbols(symbols: string[]): Record<string, UnavailableReason>;
+
+  /**
+   * Validate a single symbol against the upstream catalog. Returns null when
+   * the symbol is unknown to the catalog — distinct from "the symbol is
+   * known but we don't have a price right now". This must NOT depend on
+   * runtime feed state (replay fixtures, IEX silence, etc.) — it's the
+   * "is this a real, tradable ticker?" check. Replay providers should
+   * proxy to the underlying live catalog.
+   */
+  lookupAsset(symbol: string): Promise<AssetLookup | null>;
 
   /**
    * Replay-only: playback rate (1 = real-time, 10 = 10x, 0 = ASAP). Returns

@@ -1,6 +1,7 @@
 import WebSocket from 'ws';
 import { getLogger } from '@chongbei/web-basics/server';
 import type {
+  AssetLookup,
   Bar,
   BarTimeframe,
   Quote,
@@ -61,6 +62,18 @@ interface AlpacaBarsResponse {
   bars?: Record<string, AlpacaBar[] | undefined>;
 }
 
+/**
+ * Subset of the Trading-API `/v2/assets/{symbol}` response we care about.
+ * Full shape: https://docs.alpaca.markets/reference/getassetbysymbol
+ */
+interface AlpacaAsset {
+  symbol: string;
+  name?: string;
+  exchange?: string;
+  tradable?: boolean;
+  status?: string;
+}
+
 type WsAuthMsg = {
   T: 'success' | 'error' | 'subscription';
   msg?: string;
@@ -96,6 +109,10 @@ export class AlpacaProvider implements PriceProvider {
   async fetchQuotes(symbols: string[]): Promise<Record<string, Quote>> {
     if (symbols.length === 0) return {};
     const unique = Array.from(new Set(symbols.map((s) => s.toUpperCase())));
+    log.debug(
+      { operation: 'alpaca.fetchQuotes', count: unique.length, symbols: unique },
+      'fetchQuotes',
+    );
     const url = new URL('/v2/stocks/snapshots', this.cfg.alpaca.restBaseUrl);
     url.searchParams.set('symbols', unique.join(','));
     url.searchParams.set('feed', this.cfg.alpaca.feed);
@@ -225,6 +242,41 @@ export class AlpacaProvider implements PriceProvider {
     // unknown will surface as an empty Quote on fetchQuotes / a stream-side
     // error — same behavior as today.
     return {};
+  }
+
+  // -------------------------- REST: assets catalog --------------------------
+
+  async lookupAsset(symbol: string): Promise<AssetLookup | null> {
+    const sym = symbol.toUpperCase();
+    const url = new URL(
+      `/v2/assets/${encodeURIComponent(sym)}`,
+      this.cfg.alpaca.tradingBaseUrl,
+    );
+    const res = await fetch(url, { headers: this.restHeaders() });
+    if (res.status === 404) return null;
+    if (!res.ok) {
+      const body = await res.text().catch((readErr: unknown) => {
+        log.warn(
+          {
+            err: readErr,
+            operation: 'alpaca.assets.readErrorBody',
+            status: res.status,
+          },
+          'failed to read Alpaca assets error body',
+        );
+        return '';
+      });
+      throw new Error(
+        `Alpaca assets failed: ${res.status} ${res.statusText} ${body}`,
+      );
+    }
+    const raw = (await res.json()) as AlpacaAsset;
+    return {
+      symbol: (raw.symbol ?? sym).toUpperCase(),
+      name: raw.name ?? null,
+      tradable: raw.tradable === true,
+      exchange: raw.exchange ?? null,
+    };
   }
 
   // -------------------------- internals -------------------------------------

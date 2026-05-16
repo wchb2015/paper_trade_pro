@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Modal } from './Modal';
-import { STOCK_META } from '../lib/seedStocks';
 import type {
   Market,
   OrderSide,
@@ -173,19 +172,6 @@ export function TradeTicket({
         }}
       >
         <div style={{ minWidth: 0, flex: 1 }}>
-          <div
-            style={{
-              fontSize: 11,
-              color: 'var(--text-muted)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.05em',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-            }}
-          >
-            {m.name}
-          </div>
           <div
             className="mono tnum"
             style={{ fontSize: 22, fontWeight: 600, marginTop: 2 }}
@@ -377,18 +363,18 @@ export function TradeTicket({
             If-Then Trigger
           </div>
           <div className="input-group" style={{ marginBottom: 8 }}>
-            <select
-              className="select"
+            <input
+              className="input mono"
               style={{ flex: 1 }}
+              placeholder="Ticker"
               value={condTicker}
-              onChange={(e) => setCondTicker(e.target.value)}
-            >
-              {STOCK_META.map((s) => (
-                <option key={s.ticker} value={s.ticker}>
-                  {s.ticker}
-                </option>
-              ))}
-            </select>
+              onChange={(e) =>
+                setCondTicker(e.target.value.toUpperCase())
+              }
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
+            />
             <select
               className="select"
               style={{ width: 72 }}

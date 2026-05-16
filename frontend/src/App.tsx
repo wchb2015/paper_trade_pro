@@ -14,7 +14,6 @@ import { useMarket } from "./hooks/useMarket";
 import { useReplayClock } from "./hooks/useReplayClock";
 import { usePortfolio } from "./hooks/usePortfolio";
 import { fmtMoney, fmtPct } from "./lib/format";
-import { STOCK_META } from "./lib/seedStocks";
 import type {
   AlertCtx,
   Market,
@@ -88,8 +87,6 @@ export default function App() {
     if (page === "detail" && detailTicker) set.add(detailTicker);
     if (tradeCtx?.ticker) set.add(tradeCtx.ticker);
     if (alertCtx?.ticker) set.add(alertCtx.ticker);
-    // Include the static catalog so the Add modal can search + display prices.
-    STOCK_META.forEach((m) => set.add(m.ticker));
     return Array.from(set).map((s) => s.toUpperCase());
   }, [
     portfolio.watchlist,
@@ -530,7 +527,6 @@ export default function App() {
         <AddStockModal
           open={addOpen}
           onClose={() => setAddOpen(false)}
-          market={market}
           onAdd={(t) => toggleWatch(t)}
           existing={portfolio.watchlist}
         />

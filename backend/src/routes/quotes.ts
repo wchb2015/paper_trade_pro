@@ -3,6 +3,8 @@ import { getLogger } from "@chongbei/web-basics/server";
 
 const log = getLogger("routes.quotes");
 import type {
+  AssetLookup,
+  AssetLookupResponse,
   Bar,
   BarTimeframe,
   BarsResponse,
@@ -17,6 +19,7 @@ import type { PriceStreamHub } from "../services/PriceStreamHub";
 // REST endpoints. These are the only HTTP routes the frontend needs:
 //   GET  /api/quotes?symbols=A,B,C   - batch snapshot fetch (cached)
 //   GET  /api/bars?symbol=A&timeframe=1Day&limit=90
+//   GET  /api/assets/lookup?symbol=A - "is this a real, tradable symbol?"
 //   POST /api/subscriptions          - ensure WS subscribed to symbols
 //   GET  /api/subscriptions          - list current WS subscriptions (debug)
 //   GET  /api/health                 - liveness + provider status
@@ -34,6 +37,16 @@ interface BarsCacheEntry {
   cachedAt: number;
 }
 
+interface AssetLookupCacheEntry {
+  /** Null = upstream returned 404; cache the absence too. */
+  asset: AssetLookup | null;
+  cachedAt: number;
+}
+
+/** Asset catalog is effectively static at process timescale. */
+const ASSET_LOOKUP_TTL_MS = 60 * 60_000;
+const TICKER_RE = /^[A-Z][A-Z0-9.]{0,7}$/;
+
 const VALID_TIMEFRAMES: readonly BarTimeframe[] = [
   "1Min",
   "5Min",
@@ -45,6 +58,8 @@ const VALID_TIMEFRAMES: readonly BarTimeframe[] = [
 export function createQuotesRouter(deps: RouteDeps): Router {
   const router = Router();
   const barsCache = new Map<string, BarsCacheEntry>();
+  const assetLookupCache = new Map<string, AssetLookupCacheEntry>();
+  const inflightLookups = new Map<string, Promise<AssetLookup | null>>();
 
   router.get("/quotes", async (req: Request, res: Response) => {
     try {
@@ -133,6 +148,53 @@ export function createQuotesRouter(deps: RouteDeps): Router {
       log.error(
         { err, route: "GET /bars", query: req.query },
         "ERROR GET /bars failed",
+      );
+      return res.status(502).json({ error: (err as Error).message });
+    }
+  });
+
+  router.get("/assets/lookup", async (req: Request, res: Response) => {
+    try {
+      const symbol = String(req.query.symbol ?? "")
+        .trim()
+        .toUpperCase();
+      if (!symbol) {
+        return res.status(400).json({ error: "symbol query param required" });
+      }
+      if (!TICKER_RE.test(symbol)) {
+        return res.status(400).json({
+          error:
+            "symbol must start with a letter and contain only letters, digits, or '.', max 8 chars",
+        });
+      }
+
+      const now = Date.now();
+      const hit = assetLookupCache.get(symbol);
+      if (hit && now - hit.cachedAt < ASSET_LOOKUP_TTL_MS) {
+        const body: AssetLookupResponse = { asset: hit.asset };
+        return res.json(body);
+      }
+
+      // Coalesce concurrent lookups for the same symbol so a refresh-storm
+      // doesn't translate into N upstream calls.
+      let pending = inflightLookups.get(symbol);
+      if (!pending) {
+        pending = deps.provider
+          .lookupAsset(symbol)
+          .then((asset) => {
+            assetLookupCache.set(symbol, { asset, cachedAt: Date.now() });
+            return asset;
+          })
+          .finally(() => inflightLookups.delete(symbol));
+        inflightLookups.set(symbol, pending);
+      }
+      const asset = await pending;
+      const body: AssetLookupResponse = { asset };
+      return res.json(body);
+    } catch (err) {
+      log.error(
+        { err, route: "GET /assets/lookup", query: req.query },
+        "ERROR GET /assets/lookup failed",
       );
       return res.status(502).json({ error: (err as Error).message });
     }

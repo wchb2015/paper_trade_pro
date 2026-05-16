@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import { STOCK_META } from '../lib/seedStocks';
 import { dayChangePct } from '../lib/quote';
 import { fmtMoney, fmtPct } from '../lib/format';
 import { PriceChart } from '../components/PriceChart';
@@ -47,17 +46,31 @@ export function DashboardPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [totalValue, initialCash]);
 
+  // Rank movers from the user's tracked symbols (watchlist + positions +
+  // working orders + alerts). No static catalog any more — the dashboard
+  // only ranks things the user actually cares about.
   const topMovers = useMemo(() => {
-    return [...STOCK_META]
-      .map((s) => {
-        const m = market[s.ticker];
+    const tracked = new Set<string>();
+    portfolio.watchlist.forEach((t) => tracked.add(t));
+    portfolio.positions.forEach((p) => tracked.add(p.ticker));
+    portfolio.orders.forEach((o) => tracked.add(o.ticker));
+    portfolio.alerts.forEach((a) => tracked.add(a.ticker));
+    return Array.from(tracked)
+      .map((ticker) => {
+        const m = market[ticker];
         const pct = m ? dayChangePct(m) : null;
-        return { ...s, m, pct };
+        return { ticker, m, pct };
       })
       .filter((s) => s.m && s.pct != null)
       .sort((a, b) => Math.abs(b.pct ?? 0) - Math.abs(a.pct ?? 0))
       .slice(0, 6);
-  }, [market]);
+  }, [
+    market,
+    portfolio.watchlist,
+    portfolio.positions,
+    portfolio.orders,
+    portfolio.alerts,
+  ]);
 
   return (
     <div>
@@ -152,7 +165,6 @@ export function DashboardPage({
               >
                 <div>
                   <div className="ticker">{t.ticker}</div>
-                  <div className="company">{t.name}</div>
                 </div>
                 <Sparkline
                   data={t.m!.history.slice(-30)}
@@ -219,7 +231,6 @@ export function DashboardPage({
                     <tr key={p.id}>
                       <td>
                         <div className="ticker">{p.ticker}</div>
-                        <div className="company">{m.name}</div>
                       </td>
                       <td>
                         <span className={`pill ${p.side}`}>

@@ -1,6 +1,8 @@
 import { io, type Socket } from "socket.io-client";
 import { api } from "@chongbei/web-basics/client";
+import { dump } from "./dump";
 import type {
+  AssetLookupResponse,
   BarsResponse,
   BarTimeframe,
   ClientToServerEvents,
@@ -61,6 +63,17 @@ export class PriceClient {
   }
 
   /**
+   * "Is this a real, tradable symbol?" — provider-mode-independent. Used by
+   * the watchlist add flow so users can add valid tickers even when the
+   * live feed (or replay fixture) has nothing to show right now. Returns
+   * `{ asset: null }` when the upstream catalog has no record of `symbol`.
+   */
+  async lookupAsset(symbol: string): Promise<AssetLookupResponse> {
+    const q = new URLSearchParams({ symbol: symbol.toUpperCase() });
+    return api<AssetLookupResponse>(`${this.baseUrl}/api/assets/lookup?${q}`);
+  }
+
+  /**
    * Tell the backend to ensure its WS stream includes `symbols`. Additive by
    * default — safe to call from any component on mount. Errors throw
    * ApiError + fire a toast via configureApi.
@@ -80,6 +93,7 @@ export class PriceClient {
 
   /** Open the socket and start pushing ticks to the subscriber. */
   connect(subs: PriceClientSubscribers): void {
+    console.log("PriceClient.connect subs:\n" + dump(subs));
     if (this.socket) return;
     const socket = io(this.baseUrl, {
       reconnection: true,

@@ -27,15 +27,14 @@ export type {
 export type PriceFreshness = 'loading' | 'live' | 'stale' | 'error';
 
 /**
- * A ticker's view-model. Metadata (name/sector) is display-only and
- * comes from STOCK_META; the rest is sourced from the backend provider.
+ * A ticker's view-model. The frontend has no static catalog — every field
+ * here either comes from the backend provider or is derived locally from
+ * tick history. Display labels for a ticker are the ticker itself.
  *
  * Fields that the provider may not supply are null — the UI renders "—".
  */
 export interface StockSnapshot {
   ticker: string;
-  name: string;
-  sector: string;
   price: number;
   /** Last tick before the current one; drives flash-on-change. */
   prev: number;

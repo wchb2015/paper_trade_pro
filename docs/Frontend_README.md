@@ -45,7 +45,7 @@ src/
 ├── index.css                   Design tokens + global styles (light/dark themes)
 ├── config.ts                   Build-time config (reads import.meta.env)
 ├── components/
-│   ├── AddStockModal.tsx       Watchlist add-symbol search
+│   ├── AddStockModal.tsx       Watchlist add-symbol entry (free-text + provider validation)
 │   ├── Empty.tsx               Reusable empty-state block
 │   ├── Icon.tsx                Inline SVG icon set
 │   ├── Modal.tsx               Generic modal wrapper (Esc to close, body lock)
@@ -62,7 +62,6 @@ src/
 │   ├── portfolioClient.ts      Thin fetch wrapper over /api portfolio endpoints
 │   ├── priceClient.ts          Socket.io client + /api/quotes + /api/subscriptions
 │   ├── quote.ts                bid/ask-with-fallback + day-change helpers
-│   ├── seedStocks.ts           Static ticker → {name, sector} metadata
 │   └── types.ts                Frontend-local types + re-exports from shared/
 └── pages/
     ├── DashboardPage.tsx       Stats, equity chart, top movers, open positions

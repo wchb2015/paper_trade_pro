@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Quote, UnavailableReason } from "../../../shared/src";
 import { config } from "../config";
 import { priceClient } from "../lib/priceClient";
-import { getStockMeta } from "../lib/seedStocks";
 import type { Market, StockSnapshot } from "../lib/types";
 
 // -----------------------------------------------------------------------------
@@ -54,7 +53,6 @@ function quoteToSnapshot(
   q: Quote,
   prior: StockSnapshot | undefined,
 ): StockSnapshot {
-  const meta = getStockMeta(q.symbol);
   const prev = prior?.price ?? q.price;
   const history = prior
     ? prior.price === q.price
@@ -63,8 +61,6 @@ function quoteToSnapshot(
     : [q.price];
   return {
     ticker: q.symbol,
-    name: meta.name,
-    sector: meta.sector,
     price: q.price,
     prev,
     history,

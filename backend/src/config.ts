@@ -94,7 +94,14 @@ export interface AppConfig {
     secretKey: string;
     /** IEX is free; SIP requires a paid subscription. */
     feed: "iex" | "sip";
+    /** Market-data REST host (snapshots, bars, trades). */
     restBaseUrl: string;
+    /**
+     * Trading-API REST host (assets catalog, account, etc.). Distinct from
+     * `restBaseUrl` — the data and trading APIs live on different domains.
+     * Defaults to the paper-trading host since this app is paper-only.
+     */
+    tradingBaseUrl: string;
     wsUrl: string;
   };
   /**
@@ -149,6 +156,9 @@ export function loadConfig(): AppConfig {
       // Data endpoints are the same for paper + live accounts.
       restBaseUrl:
         optionalEnv("ALPACA_DATA_URL") ?? "https://data.alpaca.markets",
+      tradingBaseUrl:
+        optionalEnv("ALPACA_TRADING_URL") ??
+        "https://paper-api.alpaca.markets",
       wsUrl:
         optionalEnv("ALPACA_STREAM_URL") ??
         `wss://stream.data.alpaca.markets/v2/${feed}`,

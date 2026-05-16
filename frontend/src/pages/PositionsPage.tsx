@@ -68,7 +68,6 @@ export function PositionsPage({
                   <tr key={p.id}>
                     <td>
                       <div className="ticker">{p.ticker}</div>
-                      <div className="company">{m.name}</div>
                     </td>
                     <td>
                       <span className={`pill ${p.side}`}>

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { getLogger } from "@chongbei/web-basics/server";
 import type {
+  AssetLookup,
   Bar,
   BarTimeframe,
   Quote,
@@ -109,6 +110,15 @@ export class ReplayProvider implements PriceProvider {
   // -------------------------- REST-style snapshots --------------------------
 
   async fetchQuotes(symbols: string[]): Promise<Record<string, Quote>> {
+    const normalized = symbols.map((s) => s.toUpperCase());
+    log.debug(
+      {
+        operation: "replay.fetchQuotes",
+        count: normalized.length,
+        symbols: normalized,
+      },
+      "fetchQuotes",
+    );
     const out: Record<string, Quote> = {};
     for (const raw of symbols) {
       const sym = raw.toUpperCase();
@@ -292,6 +302,47 @@ export class ReplayProvider implements PriceProvider {
 
   getReplayDate(): string {
     return this.cfg.replay.date;
+  }
+
+  /**
+   * Catalog lookup is provider-mode-independent — the user is asking "is JD
+   * a real, tradable ticker?" not "do you have today's replay file?". We
+   * proxy directly to the Alpaca trading API using the same creds the rest
+   * of the app already requires. If those creds aren't usable (offline,
+   * 401, etc.) the route will surface the upstream error to the client.
+   */
+  async lookupAsset(symbol: string): Promise<AssetLookup | null> {
+    const sym = symbol.toUpperCase();
+    const url = new URL(
+      `/v2/assets/${encodeURIComponent(sym)}`,
+      this.cfg.alpaca.tradingBaseUrl,
+    );
+    const res = await fetch(url, {
+      headers: {
+        "APCA-API-KEY-ID": this.cfg.alpaca.keyId,
+        "APCA-API-SECRET-KEY": this.cfg.alpaca.secretKey,
+        Accept: "application/json",
+      },
+    });
+    if (res.status === 404) return null;
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(
+        `Alpaca assets failed: ${res.status} ${res.statusText} ${body}`,
+      );
+    }
+    const raw = (await res.json()) as {
+      symbol?: string;
+      name?: string;
+      exchange?: string;
+      tradable?: boolean;
+    };
+    return {
+      symbol: (raw.symbol ?? sym).toUpperCase(),
+      name: raw.name ?? null,
+      tradable: raw.tradable === true,
+      exchange: raw.exchange ?? null,
+    };
   }
 
   getUnavailableSymbols(symbols: string[]): Record<string, UnavailableReason> {

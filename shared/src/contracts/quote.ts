@@ -83,6 +83,28 @@ export interface SubscriptionsResponse {
 }
 
 /**
+ * Result of "is this a real, tradable symbol?" — independent of whether the
+ * provider has a current price for it. Used by the watchlist add flow so
+ * users can add valid tickers even when the live feed (or replay fixture)
+ * has nothing to show right this moment.
+ */
+export interface AssetLookup {
+  /** Canonical (uppercased) ticker symbol. */
+  symbol: string;
+  /** Friendly company / fund name when the upstream catalog supplies one. */
+  name: string | null;
+  /** Whether the asset is currently tradable. False ⇒ delisted, halted, etc. */
+  tradable: boolean;
+  /** Free-form exchange code from the upstream catalog (e.g. "NASDAQ"). */
+  exchange: string | null;
+}
+
+export interface AssetLookupResponse {
+  /** Null when the upstream catalog has no record of the symbol. */
+  asset: AssetLookup | null;
+}
+
+/**
  * Socket.io tick payload — trimmed to just what the UI needs per tick.
  */
 export interface PriceTickPayload {

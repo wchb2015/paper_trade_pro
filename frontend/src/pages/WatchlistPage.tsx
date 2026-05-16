@@ -4,7 +4,6 @@ import { Sparkline } from '../components/Sparkline';
 import { Empty } from '../components/Empty';
 import { fmtPct } from '../lib/format';
 import { dayChange, dayChangePct } from '../lib/quote';
-import { getStockMeta } from '../lib/seedStocks';
 import { useBars } from '../hooks/useBars';
 import type {
   Market,
@@ -112,9 +111,6 @@ export function WatchlistPage({
               >
                 <div>
                   <div className="ticker">{ticker}</div>
-                  <div className="company">
-                    {getStockMeta(ticker).name}
-                  </div>
                 </div>
                 <div
                   style={{
@@ -184,7 +180,6 @@ export function WatchlistPage({
             >
               <div>
                 <div className="ticker">{ticker}</div>
-                <div className="company">{m.name}</div>
               </div>
               <div
                 className={`mono tnum ${dayDir ?? ''}`}
