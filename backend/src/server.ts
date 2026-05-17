@@ -48,6 +48,7 @@ import { closePool } from "./db";
 import { createPriceProvider } from "./providers";
 import { QuoteCache } from "./services/QuoteCache";
 import { PriceStreamHub } from "./services/PriceStreamHub";
+import { EquitySnapshotter } from "./services/EquitySnapshotter";
 import { createQuotesRouter } from "./routes/quotes";
 import { createPortfolioRouter } from "./routes/portfolio";
 import { PortfolioStore } from "./store/PortfolioStore";
@@ -97,10 +98,16 @@ async function main(): Promise<void> {
   // request maps to cfg.currentUserId. When we add login, replace the
   // getUserId callback with a session lookup.
   const portfolioStore = new PortfolioStore({ initialCash: cfg.initialCash });
+  const snapshotter = new EquitySnapshotter(
+    cache,
+    cfg.historySnapshotIntervalMs,
+  );
+  snapshotter.start();
   app.use(
     "/api",
     createPortfolioRouter({
       store: portfolioStore,
+      snapshotter,
       getUserId: () => cfg.currentUserId,
     }),
   );
@@ -138,6 +145,7 @@ async function main(): Promise<void> {
   const shutdown = async (signal: string) => {
     log.info({ signal }, "received signal, shutting down");
     server.close();
+    snapshotter.stop();
     await closePool().catch((err: unknown) => {
       // Log the failure even though we continue — the process is exiting
       // anyway, but silent swallow would violate CLAUDE.md rule 5.

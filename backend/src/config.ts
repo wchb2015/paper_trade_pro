@@ -128,6 +128,12 @@ export interface AppConfig {
   currentUserId: string;
   /** Starting cash for auto-provisioned accounts / reset-funds. */
   initialCash: number;
+  /**
+   * How often the EquitySnapshotter writes a snapshot per user, in ms.
+   * Set to 0 to disable the periodic job; mutating routes (fill/reset) still
+   * write snapshots on demand. Default: 60_000 (one minute).
+   */
+  historySnapshotIntervalMs: number;
   /** Re-exported for convenience so consumers don't double-import. */
   limits: typeof FREE_TIER;
 }
@@ -167,6 +173,9 @@ export function loadConfig(): AppConfig {
     currentUserId:
       optionalEnv("CURRENT_USER_ID") ?? "3f7c9b2e-8a41-4d6c-b5f3-1e9a72c4d8ab",
     initialCash: Number(optionalEnv("INITIAL_CASH") ?? 100_000),
+    historySnapshotIntervalMs: Number(
+      optionalEnv("EQUITY_SNAPSHOT_INTERVAL_MS") ?? 60_000,
+    ),
     limits: FREE_TIER,
     replay: {
       date: optionalEnv("REPLAY_DATE") ?? "2026-05-01",

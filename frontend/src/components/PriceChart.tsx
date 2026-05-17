@@ -81,7 +81,27 @@ export function PriceChart({
   const yMin = min - pad;
   const yMax = max + pad;
   const range = yMax - yMin;
-  const leftPad = 48;
+
+  const gridLines = 4;
+  const yTicks = Array.from(
+    { length: gridLines + 1 },
+    (_, i) => yMin + (range * i) / gridLines,
+  );
+
+  // Format y-axis values with locale grouping so 99996.06 renders as
+  // "99,996.06" — readable AND lets us measure the widest label below to
+  // compute leftPad. Without grouping, 5- and 6-digit values overflow the
+  // 48px gutter and the leading digit gets clipped.
+  const yLabels = yTicks.map((v) =>
+    v.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }),
+  );
+  // ~6.2px per char in the 10px JetBrains-Mono used for ticks, plus an 8px
+  // gutter between label and axis and a 4px breathing room on the far left.
+  const maxLabelLen = yLabels.reduce((m, s) => Math.max(m, s.length), 0);
+  const leftPad = Math.max(48, Math.ceil(maxLabelLen * 6.2) + 12);
   const rightPad = 8;
   const topPad = 12;
   const botPad = 22;
@@ -95,12 +115,6 @@ export function PriceChart({
   const areaPts = `${leftPad},${y(yMin)} ${linePts} ${leftPad + plotW},${y(yMin)}`;
   const isUp = series[series.length - 1].p >= series[0].p;
   const color = isUp ? 'var(--up)' : 'var(--down)';
-
-  const gridLines = 4;
-  const yTicks = Array.from(
-    { length: gridLines + 1 },
-    (_, i) => yMin + (range * i) / gridLines,
-  );
 
   const xTicks = 5;
   const labels = Array.from({ length: xTicks + 1 }, (_, i) => {
@@ -165,7 +179,7 @@ export function PriceChart({
               fill="var(--text-muted)"
               fontFamily="JetBrains Mono, monospace"
             >
-              {v.toFixed(2)}
+              {yLabels[i]}
             </text>
           </g>
         ))}

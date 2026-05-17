@@ -16,13 +16,18 @@ function pickId(req: Request): string {
 import type {
   AddAlertInput,
   FillOrderInput,
+  HistoryRange,
+  OkResponse,
   PlaceOrderInput,
+  PortfolioHistoryResponse,
   ResetFundsInput,
   ToggleWatchInput,
   TriggerAlertInput,
   UpdatePeakInput,
 } from "../../../shared/src";
+import { isHistoryRange } from "../../../shared/src";
 import type { PortfolioStore } from "../store/PortfolioStore";
+import type { EquitySnapshotter } from "../services/EquitySnapshotter";
 
 // -----------------------------------------------------------------------------
 // Portfolio REST routes. Every mutating endpoint returns the refreshed
@@ -40,6 +45,7 @@ import type { PortfolioStore } from "../store/PortfolioStore";
 
 interface RouteDeps {
   store: PortfolioStore;
+  snapshotter: EquitySnapshotter;
   getUserId: (req: Request) => string;
 }
 
@@ -64,7 +70,7 @@ function asError(err: unknown): { status: number; message: string } {
 
 export function createPortfolioRouter(deps: RouteDeps): Router {
   const router = Router();
-  const { store, getUserId } = deps;
+  const { store, snapshotter, getUserId } = deps;
 
   // GET /api/portfolio — full snapshot
   router.get("/portfolio", async (req: Request, res: Response) => {
@@ -81,12 +87,21 @@ export function createPortfolioRouter(deps: RouteDeps): Router {
     }
   });
 
-  // POST /api/orders — place a new order (market orders fill in-line)
+  // POST /api/orders — place a new order (market orders fill in-line).
+  // Returns just the post-mutation Order. Cash + positions live on
+  // GET /api/portfolio; the client refetches that endpoint after a
+  // place to refresh those scopes. Each route owns one concern.
   router.post("/orders", async (req: Request, res: Response) => {
     try {
       const body = (req.body ?? {}) as PlaceOrderInput;
-      const portfolio = await store.placeOrder(getUserId(req), body);
-      res.json(portfolio);
+      const order = await store.placeOrder(getUserId(req), body);
+      // Market orders mutate cash + positions in placeOrder; snapshot now so
+      // the chart picks up the fill instantly. Non-market just inserts a
+      // pending row (no equity change), but snapshotting is cheap.
+      if (body.type === "market") {
+        void snapshotter.snapshotUser(getUserId(req));
+      }
+      res.json(order);
     } catch (err) {
       const { status, message } = asError(err);
       log.error(
@@ -130,6 +145,7 @@ export function createPortfolioRouter(deps: RouteDeps): Router {
         pickId(req),
         body.fillPrice,
       );
+      void snapshotter.snapshotUser(getUserId(req));
       return res.json(portfolio);
     } catch (err) {
       const { status, message } = asError(err);
@@ -287,12 +303,47 @@ export function createPortfolioRouter(deps: RouteDeps): Router {
     }
   });
 
-  // POST /api/portfolio/reset — dev: wipes positions/orders/alerts/watchlist
+  // GET /api/portfolio/history?range=1M|3M|YTD|ALL
+  router.get("/portfolio/history", async (req: Request, res: Response) => {
+    try {
+      const raw = req.query.range;
+      const rangeStr = typeof raw === "string" ? raw : "1M";
+      if (!isHistoryRange(rangeStr)) {
+        return res.status(400).json({ error: `invalid range "${rangeStr}"` });
+      }
+      const range: HistoryRange = rangeStr;
+      const points = await store.getHistory(getUserId(req), range);
+      const body: PortfolioHistoryResponse = { range, points };
+      return res.json(body);
+    } catch (err) {
+      const { status, message } = asError(err);
+      log.error(
+        {
+          err,
+          route: "GET /portfolio/history",
+          userId: getUserId(req),
+          status,
+        },
+        "ERROR GET /portfolio/history failed",
+      );
+      return res.status(status).json({ error: message });
+    }
+  });
+
+  // POST /api/portfolio/reset — dev: wipes positions/orders/history (and
+  // equity snapshots) and restarts the account at the given cash. Alerts
+  // and watchlist are preserved across resets.
+  // Returns { ok: true } on success; the client refetches /api/portfolio
+  // afterwards to refresh state. Each route owns one concern.
   router.post("/portfolio/reset", async (req: Request, res: Response) => {
     try {
       const body = (req.body ?? {}) as ResetFundsInput;
-      const portfolio = await store.resetFunds(getUserId(req), body.cash);
-      res.json(portfolio);
+      await store.resetFunds(getUserId(req), body.cash);
+      // After reset, write a single starting-equity snapshot so the chart
+      // has at least one point to render at the new initial cash.
+      void snapshotter.snapshotUser(getUserId(req));
+      const response: OkResponse = { ok: true };
+      res.json(response);
     } catch (err) {
       const { status, message } = asError(err);
       log.error(

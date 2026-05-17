@@ -66,9 +66,51 @@ export function AccountPage({
               lineHeight: 1.55,
             }}
           >
-            This wipes your positions, orders, and trade history, then restarts
-            the account with the amount below. Useful when you want a clean
-            slate to practice a new strategy.
+            <div style={{ marginBottom: 8 }}>
+              Restart the account with the amount below. Useful when you want a
+              clean slate to practice a new strategy.
+            </div>
+            <div style={{ marginBottom: 6 }}>
+              <strong>Will be erased:</strong>
+            </div>
+            <ul
+              style={{
+                margin: '0 0 8px 18px',
+                padding: 0,
+                listStyle: 'disc',
+              }}
+            >
+              <li>
+                {portfolio.positions.length} open position
+                {portfolio.positions.length === 1 ? '' : 's'}
+              </li>
+              <li>
+                {portfolio.orders.length} working order
+                {portfolio.orders.length === 1 ? '' : 's'}
+              </li>
+              <li>
+                {portfolio.history.length} filled / cancelled order
+                {portfolio.history.length === 1 ? '' : 's'} (trade history)
+              </li>
+              <li>Portfolio-value chart history</li>
+              <li>
+                Cash and starting cash will be reset to the amount you choose
+                below
+              </li>
+            </ul>
+            <div style={{ marginBottom: 6 }}>
+              <strong>Will be kept:</strong>
+            </div>
+            <ul style={{ margin: '0 0 0 18px', padding: 0, listStyle: 'disc' }}>
+              <li>
+                {portfolio.alerts.length} alert
+                {portfolio.alerts.length === 1 ? '' : 's'}
+              </li>
+              <li>
+                Watchlist ({portfolio.watchlist.length} ticker
+                {portfolio.watchlist.length === 1 ? '' : 's'})
+              </li>
+            </ul>
           </div>
           <div
             style={{
@@ -117,8 +159,9 @@ export function AccountPage({
               }}
             >
               <div style={{ flex: 1, fontSize: 13 }}>
-                <strong>Confirm reset?</strong> All positions, orders, and
-                history will be erased.
+                <strong>Confirm reset?</strong> Positions, orders, trade
+                history, and chart history will be erased. Alerts and
+                watchlist are kept.
               </div>
               <button className="btn" onClick={() => setConfirm(false)}>
                 Cancel

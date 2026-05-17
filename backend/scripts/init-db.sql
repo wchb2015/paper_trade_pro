@@ -236,3 +236,32 @@ CREATE OR REPLACE TRIGGER watchlist_set_updated_at
 
 CREATE INDEX IF NOT EXISTS watchlist_user_added_idx
   ON paper_trade_pro.watchlist (user_id, added_at ASC);
+
+-- -----------------------------------------------------------------------------
+-- equity_snapshots — per-user portfolio-value samples.
+-- Written by (a) the EquitySnapshotter in-process scheduled job, and
+-- (b) the portfolio routes after fill/reset by calling
+-- EquitySnapshotter.snapshotUser(userId). resetFunds also deletes all prior
+-- rows for the user. Used by GET /api/portfolio/history.
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS paper_trade_pro.equity_snapshots (
+  id            UUID         PRIMARY KEY DEFAULT uuidv7(),
+  user_id       UUID         NOT NULL,
+  taken_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
+  equity        NUMERIC(16,2) NOT NULL,
+  cash          NUMERIC(14,2) NOT NULL,
+  market_value  NUMERIC(16,2) NOT NULL,
+  created_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
+  updated_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
+
+  CONSTRAINT equity_snapshots_equity_finite CHECK (equity = equity),
+  CONSTRAINT equity_snapshots_cash_finite   CHECK (cash = cash),
+  CONSTRAINT equity_snapshots_mv_nonneg     CHECK (market_value >= 0)
+);
+
+CREATE OR REPLACE TRIGGER equity_snapshots_set_updated_at
+  BEFORE UPDATE ON paper_trade_pro.equity_snapshots
+  FOR EACH ROW EXECUTE FUNCTION paper_trade_pro.set_updated_at();
+
+CREATE INDEX IF NOT EXISTS equity_snapshots_user_taken_idx
+  ON paper_trade_pro.equity_snapshots (user_id, taken_at ASC);

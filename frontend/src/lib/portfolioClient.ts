@@ -2,8 +2,12 @@ import { api } from "@chongbei/web-basics/client";
 import type {
   AddAlertInput,
   FillOrderInput,
+  HistoryRange,
+  OkResponse,
+  Order,
   PlaceOrderInput,
   Portfolio,
+  PortfolioHistoryResponse,
   ResetFundsInput,
   ToggleWatchInput,
   TriggerAlertInput,
@@ -29,8 +33,13 @@ export const portfolioClient = {
   get(): Promise<Portfolio> {
     return api<Portfolio>(url("/api/portfolio"));
   },
-  placeOrder(body: PlaceOrderInput): Promise<Portfolio> {
-    return api<Portfolio>(url("/api/orders"), {
+  getHistory(range: HistoryRange): Promise<PortfolioHistoryResponse> {
+    return api<PortfolioHistoryResponse>(
+      url(`/api/portfolio/history?range=${encodeURIComponent(range)}`),
+    );
+  },
+  placeOrder(body: PlaceOrderInput): Promise<Order> {
+    return api<Order>(url("/api/orders"), {
       method: "POST",
       body: JSON.stringify(body),
     });
@@ -77,8 +86,8 @@ export const portfolioClient = {
       body: JSON.stringify(body),
     });
   },
-  reset(body: ResetFundsInput = {}): Promise<Portfolio> {
-    return api<Portfolio>(url("/api/portfolio/reset"), {
+  reset(body: ResetFundsInput = {}): Promise<OkResponse> {
+    return api<OkResponse>(url("/api/portfolio/reset"), {
       method: "POST",
       body: JSON.stringify(body),
     });

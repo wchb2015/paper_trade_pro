@@ -88,6 +88,14 @@ export function usePortfolio(market: Market): UsePortfolioResult {
     setError(null);
   }, []);
 
+  // Refetch the full portfolio. Used after the slim mutating endpoints
+  // (POST /api/orders, POST /api/portfolio/reset) that don't return state
+  // — each route owns one concern, and the client refreshes by calling
+  // GET /api/portfolio. Errors propagate to the standard handler.
+  const refreshPortfolio = useCallback(() => {
+    portfolioClient.get().then(applyPortfolio).catch(handleError);
+  }, [applyPortfolio, handleError]);
+
   // Initial load.
   useEffect(() => {
     mounted.current = true;
@@ -150,9 +158,14 @@ export function usePortfolio(market: Market): UsePortfolioResult {
             ? askOrPrice(m)
             : bidOrPrice(m);
       }
-      portfolioClient.placeOrder(body).then(applyPortfolio).catch(handleError);
+      // Server returns just the new Order; refetch /api/portfolio to
+      // pick up the post-mutation cash/positions.
+      portfolioClient
+        .placeOrder(body)
+        .then(refreshPortfolio)
+        .catch(handleError);
     },
-    [market, applyPortfolio, handleError],
+    [market, refreshPortfolio, handleError],
   );
 
   const cancelOrder = useCallback(
@@ -165,9 +178,10 @@ export function usePortfolio(market: Market): UsePortfolioResult {
   const resetFunds = useCallback(
     (amount?: number) => {
       const body = amount != null ? { cash: amount } : {};
-      portfolioClient.reset(body).then(applyPortfolio).catch(handleError);
+      // Server returns { ok: true }; refetch /api/portfolio for state.
+      portfolioClient.reset(body).then(refreshPortfolio).catch(handleError);
     },
-    [applyPortfolio, handleError],
+    [refreshPortfolio, handleError],
   );
 
   const toggleWatch = useCallback(

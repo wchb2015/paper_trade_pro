@@ -1,10 +1,12 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { dayChangePct } from '../lib/quote';
 import { fmtMoney, fmtPct } from '../lib/format';
-import { PriceChart } from '../components/PriceChart';
+import { PriceChart, type PriceChartPoint } from '../components/PriceChart';
 import { PriceCell } from '../components/PriceCell';
 import { Sparkline } from '../components/Sparkline';
 import { Empty } from '../components/Empty';
+import { portfolioClient } from '../lib/portfolioClient';
+import type { HistoryRange } from '../../../shared/src';
 import type {
   Market,
   PageKey,
@@ -33,18 +35,42 @@ export function DashboardPage({
   const totalPct = ((totalValue - initialCash) / initialCash) * 100;
   const dayPct = initialCash ? (valuation.dayPnL / initialCash) * 100 : 0;
 
-  const equityHist = useMemo(() => {
-    const arr = Array.from({ length: 60 }, (_, i) => {
-      const t = i / 60;
-      return (
-        initialCash *
-        (1 + (totalPct / 100) * t + Math.sin(i / 6) * 0.003)
-      );
-    });
-    arr[arr.length - 1] = totalValue;
-    return arr;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [totalValue, initialCash]);
+  const [range, setRange] = useState<HistoryRange>('1M');
+  const [historyPoints, setHistoryPoints] = useState<PriceChartPoint[]>([]);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    portfolioClient
+      .getHistory(range)
+      .then((res) => {
+        if (cancelled) return;
+        setHistoryPoints(res.points.map((pt) => ({ t: pt.t, p: pt.p })));
+        setHistoryError(null);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        const msg = err instanceof Error ? err.message : String(err);
+        // CLAUDE.md rule 4/10: never silently swallow.
+        // eslint-disable-next-line no-console
+        console.error('ERROR DashboardPage.getHistory failed', { err, range });
+        setHistoryError(msg);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [range]);
+
+  // Append a synthetic "now" point so the rightmost edge tracks live equity
+  // between server snapshots. Skip if the latest server point is fresh.
+  const chartPoints = useMemo<PriceChartPoint[]>(() => {
+    if (historyPoints.length === 0) {
+      return [{ t: Date.now(), p: totalValue }];
+    }
+    const last = historyPoints[historyPoints.length - 1];
+    if (last && Date.now() - last.t < 5_000) return historyPoints;
+    return [...historyPoints, { t: Date.now(), p: totalValue }];
+  }, [historyPoints, totalValue]);
 
   // Rank movers from the user's tracked symbols (watchlist + positions +
   // working orders + alerts). No static catalog any more — the dashboard
@@ -134,14 +160,30 @@ export function DashboardPage({
           <div className="card-header">
             <h3 className="card-title">Portfolio value</h3>
             <div className="segmented">
-              <button className="active">1M</button>
-              <button>3M</button>
-              <button>YTD</button>
-              <button>ALL</button>
+              {(['1M', '3M', 'YTD', 'ALL'] as const).map((r) => (
+                <button
+                  key={r}
+                  className={range === r ? 'active' : ''}
+                  onClick={() => setRange(r)}
+                >
+                  {r}
+                </button>
+              ))}
             </div>
           </div>
           <div className="card-body">
-            <PriceChart data={equityHist} height={260} />
+            <PriceChart points={chartPoints} height={260} />
+            {historyError && (
+              <div
+                style={{
+                  color: 'var(--down)',
+                  fontSize: 12,
+                  padding: '0 18px 12px',
+                }}
+              >
+                Couldn’t load history: {historyError}
+              </div>
+            )}
           </div>
         </div>
         <div className="card">

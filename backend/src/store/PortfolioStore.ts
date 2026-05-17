@@ -298,8 +298,16 @@ export class PortfolioStore {
    *
    * For non-market orders we just INSERT with status='pending'; the fill
    * loop on the client drives subsequent /fill calls when the trigger hits.
+   *
+   * Returns just the post-mutation `Order`. Cash and positions live on
+   * `GET /api/portfolio` and the client refetches that endpoint after
+   * placing an order — keeps each route owning a single concern instead
+   * of duplicating portfolio scopes on the wire.
    */
-  async placeOrder(userId: string, input: PlaceOrderInput): Promise<Portfolio> {
+  async placeOrder(
+    userId: string,
+    input: PlaceOrderInput,
+  ): Promise<Order> {
     await this.ensureAccount(userId);
 
     if (!isOrderSide(input.side))
@@ -392,7 +400,18 @@ export class PortfolioStore {
         await this.applyFill(client, userId, orderRow.id, input.fillPrice!);
       }
 
-      return this.getPortfolioInTx(client, userId);
+      // Re-read the order row so a market-order response carries the
+      // post-fill state (status='filled', filled_at, fill_price) instead
+      // of the pre-fill row we INSERTed above. Non-market orders are
+      // unchanged but the second read is cheap and keeps the code uniform.
+      const finalOrderRes = await client.query<OrderRow>(
+        `SELECT * FROM paper_trade_pro.orders WHERE id = $1`,
+        [orderRow.id],
+      );
+      const finalOrderRow = finalOrderRes.rows[0];
+      if (!finalOrderRow) throw new Error('order vanished mid-transaction');
+
+      return rowToOrder(finalOrderRow);
     });
   }
 
@@ -540,14 +559,18 @@ export class PortfolioStore {
   }
 
   // -------------------------------------------------------------------------
-  // Reset (development convenience — wipes positions/orders/alerts/watchlist)
+  // Reset (development convenience — wipes positions/orders/history and
+  // restarts the account at the requested cash. Alerts and watchlist
+  // intentionally survive a reset; users curate those over time and would
+  // not want them erased by a "clean slate to practice a new strategy"
+  // action.)
   // -------------------------------------------------------------------------
 
-  async resetFunds(userId: string, cash?: number): Promise<Portfolio> {
+  async resetFunds(userId: string, cash?: number): Promise<void> {
     const amount = cash ?? this.initialCash;
     ensurePositiveNumber('cash', amount);
 
-    return withTransaction(async (client) => {
+    await withTransaction(async (client) => {
       await client.query(
         `DELETE FROM paper_trade_pro.positions WHERE user_id = $1`,
         [userId],
@@ -556,12 +579,9 @@ export class PortfolioStore {
         `DELETE FROM paper_trade_pro.orders WHERE user_id = $1`,
         [userId],
       );
+      // alerts + watchlist are deliberately preserved.
       await client.query(
-        `DELETE FROM paper_trade_pro.alerts WHERE user_id = $1`,
-        [userId],
-      );
-      await client.query(
-        `DELETE FROM paper_trade_pro.watchlist WHERE user_id = $1`,
+        `DELETE FROM paper_trade_pro.equity_snapshots WHERE user_id = $1`,
         [userId],
       );
       await client.query(
@@ -572,16 +592,43 @@ export class PortfolioStore {
                initial_cash = EXCLUDED.initial_cash`,
         [userId, amount],
       );
-      for (const sym of DEFAULT_WATCHLIST) {
-        await client.query(
-          `INSERT INTO paper_trade_pro.watchlist (user_id, ticker)
-           VALUES ($1, $2)
-           ON CONFLICT (user_id, ticker) DO NOTHING`,
-          [userId, sym],
-        );
-      }
-      return this.getPortfolioInTx(client, userId);
     });
+  }
+
+  // -------------------------------------------------------------------------
+  // History
+  // -------------------------------------------------------------------------
+
+  /**
+   * Fetch equity snapshots for a user, oldest first, filtered by `range`.
+   *   1M  — last 31 days
+   *   3M  — last 93 days
+   *   YTD — from Jan 1 of the current calendar year (UTC anchor; per
+   *         CLAUDE.md the server is timezone-ignorant)
+   *   ALL — every snapshot
+   * The route handler is responsible for typing/validating `range` before
+   * calling this; passing an unrecognised string here just behaves like ALL.
+   */
+  async getHistory(
+    userId: string,
+    range: string,
+  ): Promise<{ t: number; p: number }[]> {
+    let where = `user_id = $1`;
+    if (range === '1M') {
+      where += ` AND taken_at >= now() - interval '31 days'`;
+    } else if (range === '3M') {
+      where += ` AND taken_at >= now() - interval '93 days'`;
+    } else if (range === 'YTD') {
+      where += ` AND taken_at >= (date_trunc('year', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')`;
+    }
+    const res = await this.pool.query<{ taken_at: Date; equity: number }>(
+      `SELECT taken_at, equity
+         FROM paper_trade_pro.equity_snapshots
+        WHERE ${where}
+        ORDER BY taken_at ASC`,
+      [userId],
+    );
+    return res.rows.map((r) => ({ t: r.taken_at.getTime(), p: r.equity }));
   }
 
   // -------------------------------------------------------------------------

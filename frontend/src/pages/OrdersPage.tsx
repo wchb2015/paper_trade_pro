@@ -18,18 +18,17 @@ export function OrdersPage({
 }: OrdersPageProps) {
   const [tab, setTab] = useState<Tab>('working');
 
+  // Working orders live in portfolio.orders (pending / pending_fill); filled
+  // and cancelled rows live in portfolio.history. The server enforces this
+  // split in PortfolioStore.getPortfolio, so reading terminal rows from
+  // .orders would always be empty.
   const working = portfolio.orders.filter(
     (o) => o.status === 'pending' || o.status === 'pending_fill',
   );
-  const done = portfolio.orders.filter(
-    (o) => o.status !== 'pending' && o.status !== 'pending_fill',
-  );
+  const filled = portfolio.history.filter((o) => o.status === 'filled');
+  const cancelled = portfolio.history.filter((o) => o.status === 'cancelled');
   const rows: Order[] =
-    tab === 'working'
-      ? working
-      : tab === 'filled'
-        ? done.filter((o) => o.status === 'filled')
-        : done.filter((o) => o.status === 'cancelled');
+    tab === 'working' ? working : tab === 'filled' ? filled : cancelled;
 
   const typeLabel = (t: OrderType) =>
     ORDER_TYPES.find((x) => x.value === t)?.label || t;
@@ -53,8 +52,7 @@ export function OrdersPage({
         <div>
           <h1 className="page-title">Orders</h1>
           <div className="page-subtitle">
-            {working.length} working ·{' '}
-            {done.filter((o) => o.status === 'filled').length} filled today
+            {working.length} working · {filled.length} filled today
           </div>
         </div>
       </div>
@@ -69,13 +67,13 @@ export function OrdersPage({
           className={tab === 'filled' ? 'active' : ''}
           onClick={() => setTab('filled')}
         >
-          Filled ({done.filter((o) => o.status === 'filled').length})
+          Filled ({filled.length})
         </button>
         <button
           className={tab === 'cancelled' ? 'active' : ''}
           onClick={() => setTab('cancelled')}
         >
-          Cancelled ({done.filter((o) => o.status === 'cancelled').length})
+          Cancelled ({cancelled.length})
         </button>
       </div>
       <div className="card">

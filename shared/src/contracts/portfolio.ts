@@ -64,6 +64,21 @@ export const ALERT_CONDITIONS: readonly AlertCondition[] = ['above', 'below'] as
 
 export const CONDITIONAL_OPS: readonly ConditionalOp[] = ['>=', '<='] as const;
 
+export type HistoryRange = '1M' | '3M' | 'YTD' | 'ALL';
+
+export const HISTORY_RANGES: readonly HistoryRange[] = [
+  '1M',
+  '3M',
+  'YTD',
+  'ALL',
+] as const;
+
+export function isHistoryRange(v: unknown): v is HistoryRange {
+  return (
+    typeof v === 'string' && (HISTORY_RANGES as readonly string[]).includes(v)
+  );
+}
+
 export function isOrderType(v: unknown): v is OrderType {
   return typeof v === 'string' && (ORDER_TYPES as readonly string[]).includes(v);
 }
@@ -189,4 +204,26 @@ export interface ToggleWatchInput {
 
 export interface ResetFundsInput {
   cash?: number;
+}
+
+/**
+ * Generic acknowledgement returned by mutating endpoints that don't
+ * carry state back to the client. Callers refetch GET /api/portfolio
+ * (or a more specific read) to see the post-mutation state.
+ */
+export interface OkResponse {
+  ok: true;
+}
+
+/** One sample of a user's portfolio value at `t` (epoch-ms). */
+export interface EquityPoint {
+  /** Epoch milliseconds (UTC over the wire — see CLAUDE.md timezone rule). */
+  t: number;
+  /** Total portfolio equity at that instant: cash + market value of positions. */
+  p: number;
+}
+
+export interface PortfolioHistoryResponse {
+  range: HistoryRange;
+  points: EquityPoint[];
 }
