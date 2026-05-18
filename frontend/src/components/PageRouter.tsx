@@ -1,8 +1,6 @@
 import { PortfolioPage } from "../pages/PortfolioPage";
 import { WatchlistPage } from "../pages/WatchlistPage";
 import { TradePage } from "../pages/TradePage";
-import { PositionsPage } from "../pages/PositionsPage";
-import { OrdersPage } from "../pages/OrdersPage";
 import { AlertsPage } from "../pages/AlertsPage";
 import { AccountPage } from "../pages/AccountPage";
 import type {
@@ -24,7 +22,6 @@ interface PageRouterProps {
   portfolio: Portfolio;
   valuation: Valuation;
   toggleWatch: UsePortfolioResult["toggleWatch"];
-  cancelOrder: UsePortfolioResult["cancelOrder"];
   toggleAlert: UsePortfolioResult["toggleAlert"];
   removeAlert: UsePortfolioResult["removeAlert"];
   resetFunds: UsePortfolioResult["resetFunds"];
@@ -44,7 +41,6 @@ export function PageRouter(props: PageRouterProps) {
     portfolio,
     valuation,
     toggleWatch,
-    cancelOrder,
     toggleAlert,
     removeAlert,
     resetFunds,
@@ -90,23 +86,6 @@ export function PageRouter(props: PageRouterProps) {
           setAlertCtx={setAlertCtx}
           onNavigate={onNavigate}
           liveFeed={liveFeed}
-        />
-      );
-    case "positions":
-      return (
-        <PositionsPage
-          market={market}
-          portfolio={portfolio}
-          valuation={valuation}
-          setTradeCtx={setTradeCtx}
-        />
-      );
-    case "orders":
-      return (
-        <OrdersPage
-          market={market}
-          portfolio={portfolio}
-          cancelOrder={cancelOrder}
         />
       );
     case "alerts":

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { dayChangePct } from '../lib/quote';
-import { fmtMoney, fmtPct } from '../lib/format';
+import { fmtLocalTime, fmtMoney, fmtPct } from '../lib/format';
 import { PriceChart, type PriceChartPoint } from '../components/PriceChart';
 import { PriceCell } from '../components/PriceCell';
 import { Sparkline } from '../components/Sparkline';
@@ -38,6 +38,9 @@ export function PortfolioPage({
   const [range, setRange] = useState<HistoryRange>('1M');
   const [historyPoints, setHistoryPoints] = useState<PriceChartPoint[]>([]);
   const [historyError, setHistoryError] = useState<string | null>(null);
+
+  type Tab = 'overview' | 'positions' | 'history';
+  const [tab, setTab] = useState<Tab>('overview');
 
   useEffect(() => {
     let cancelled = false;
@@ -109,6 +112,29 @@ export function PortfolioPage({
         </div>
       </div>
 
+      <div className="tabs" style={{ marginBottom: 14 }}>
+        <button
+          className={tab === 'overview' ? 'active' : ''}
+          onClick={() => setTab('overview')}
+        >
+          Overview
+        </button>
+        <button
+          className={tab === 'positions' ? 'active' : ''}
+          onClick={() => setTab('positions')}
+        >
+          Positions ({positions.length})
+        </button>
+        <button
+          className={tab === 'history' ? 'active' : ''}
+          onClick={() => setTab('history')}
+        >
+          History
+        </button>
+      </div>
+
+      {tab === 'overview' && (
+      <>
       <div className="stat-grid">
         <div className="stat">
           <div className="stat-label">Portfolio Value</div>
@@ -233,7 +259,7 @@ export function PortfolioPage({
           <h3 className="card-title">Open positions</h3>
           <button
             className="btn sm ghost"
-            onClick={() => onNavigate('positions')}
+            onClick={() => setTab('positions')}
           >
             View all →
           </button>
@@ -321,6 +347,174 @@ export function PortfolioPage({
           )}
         </div>
       </div>
+      </>
+      )}
+
+      {tab === 'positions' && (
+        <div className="card">
+          {positions.length === 0 ? (
+            <Empty
+              title="No open positions"
+              subtitle="Use the Trade button on any stock to open your first position."
+            />
+          ) : (
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Symbol</th>
+                  <th>Side</th>
+                  <th className="num">Qty</th>
+                  <th className="num">Avg Cost</th>
+                  <th className="num">Last</th>
+                  <th className="num">Market Value</th>
+                  <th className="num">Unrealized P&L</th>
+                  <th className="num">% Change</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {positions.map((p) => {
+                  const m = market[p.ticker];
+                  if (!m) return null;
+                  const mkt = (p.side === 'long' ? m.price : p.avgPrice) * p.qty;
+                  const pnl =
+                    p.side === 'long'
+                      ? (m.price - p.avgPrice) * p.qty
+                      : (p.avgPrice - m.price) * p.qty;
+                  const pnlPct = (pnl / (p.avgPrice * p.qty)) * 100;
+                  return (
+                    <tr key={p.id}>
+                      <td>
+                        <div
+                          className="ticker"
+                          onClick={() => onNavigate('trade', p.ticker)}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          {p.ticker}
+                        </div>
+                      </td>
+                      <td>
+                        <span className={`pill ${p.side}`}>
+                          {p.side.toUpperCase()}
+                        </span>
+                      </td>
+                      <td className="num">{p.qty}</td>
+                      <td className="num">${p.avgPrice.toFixed(2)}</td>
+                      <td className="num">
+                        <PriceCell value={m.price} prefix="$" />
+                      </td>
+                      <td className="num">${mkt.toFixed(2)}</td>
+                      <td
+                        className="num"
+                        style={{ color: pnl >= 0 ? 'var(--up)' : 'var(--down)' }}
+                      >
+                        {fmtMoney(pnl, { signed: true })}
+                      </td>
+                      <td className="num">
+                        <span className={`chip ${pnlPct >= 0 ? 'up' : 'down'}`}>
+                          {fmtPct(pnlPct)}
+                        </span>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <div
+                          style={{
+                            display: 'flex',
+                            gap: 4,
+                            justifyContent: 'flex-end',
+                          }}
+                        >
+                          <button
+                            className="btn sm"
+                            onClick={() =>
+                              setTradeCtx({
+                                ticker: p.ticker,
+                                side: p.side === 'long' ? 'buy' : 'short',
+                              })
+                            }
+                          >
+                            Add
+                          </button>
+                          <button
+                            className="btn sm primary"
+                            onClick={() =>
+                              setTradeCtx({
+                                ticker: p.ticker,
+                                side: p.side === 'long' ? 'sell' : 'cover',
+                              })
+                            }
+                          >
+                            Close
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {tab === 'history' && (
+        <div className="card">
+          {(() => {
+            const filled = portfolio.history.filter((o) => o.status === 'filled');
+            if (filled.length === 0) {
+              return (
+                <Empty
+                  title="No filled orders yet"
+                  subtitle="Once you place and fill an order it will appear here."
+                />
+              );
+            }
+            return (
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Symbol</th>
+                    <th>Action</th>
+                    <th className="num">Qty</th>
+                    <th className="num">Fill Price</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filled.map((o) => (
+                    <tr key={o.id}>
+                      <td style={{ color: 'var(--text-muted)' }}>
+                        {fmtLocalTime(o.filledAt ?? o.createdAt)}
+                      </td>
+                      <td>
+                        <div
+                          className="ticker"
+                          onClick={() => onNavigate('trade', o.ticker)}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          {o.ticker}
+                        </div>
+                      </td>
+                      <td>
+                        <span
+                          className={`pill ${
+                            o.side === 'buy' || o.side === 'cover' ? 'long' : 'short'
+                          }`}
+                        >
+                          {o.side.toUpperCase()}
+                        </span>
+                      </td>
+                      <td className="num">{o.qty}</td>
+                      <td className="num">
+                        {o.fillPrice ? `$${o.fillPrice.toFixed(2)}` : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            );
+          })()}
+        </div>
+      )}
     </div>
   );
 }

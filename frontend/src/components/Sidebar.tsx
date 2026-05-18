@@ -5,7 +5,6 @@ interface SidebarProps {
   page: PageKey;
   onNavigate: (p: PageKey, ticker?: string) => void;
   portfolio: Portfolio;
-  workingOrders: number;
   activeAlerts: number;
   provider: string;
 }
@@ -14,7 +13,6 @@ export function Sidebar({
   page,
   onNavigate,
   portfolio,
-  workingOrders,
   activeAlerts,
   provider,
 }: SidebarProps) {
@@ -31,18 +29,7 @@ export function Sidebar({
       icon: "watchlist",
       badge: portfolio.watchlist.length,
     },
-    {
-      id: "positions",
-      label: "Positions",
-      icon: "positions",
-      badge: portfolio.positions.length || null,
-    },
-    {
-      id: "orders",
-      label: "Orders",
-      icon: "orders",
-      badge: workingOrders || null,
-    },
+    { id: "trade", label: "Trade", icon: "positions", badge: null },
     {
       id: "alerts",
       label: "Alerts",

@@ -55,7 +55,6 @@ export default function App() {
     portfolio,
     valuation,
     placeOrder,
-    cancelOrder,
     resetFunds,
     toggleWatch,
     addAlert,
@@ -102,9 +101,6 @@ export default function App() {
   const activeAlerts = portfolio.alerts.filter(
     (a) => a.active && !a.triggeredAt,
   ).length;
-  const workingOrders = portfolio.orders.filter(
-    (o) => o.status === "pending" || o.status === "pending_fill",
-  ).length;
 
   const effectiveValuation = useLiveValuation(market, portfolio, valuation);
 
@@ -138,7 +134,6 @@ export default function App() {
         page={page}
         onNavigate={onNavigate}
         portfolio={portfolio}
-        workingOrders={workingOrders}
         activeAlerts={activeAlerts}
         provider={provider}
       />
@@ -152,7 +147,6 @@ export default function App() {
           portfolio={portfolio}
           valuation={effectiveValuation}
           toggleWatch={toggleWatch}
-          cancelOrder={cancelOrder}
           toggleAlert={toggleAlert}
           removeAlert={removeAlert}
           resetFunds={resetFunds}
