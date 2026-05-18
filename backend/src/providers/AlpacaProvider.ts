@@ -1,20 +1,20 @@
-import WebSocket from 'ws';
-import { getLogger } from '@chongbei/web-basics/server';
+import WebSocket from "ws";
+import { getLogger } from "@chongbei/web-basics/server";
 import type {
   AssetLookup,
   Bar,
   BarTimeframe,
   Quote,
   UnavailableReason,
-} from '../../../shared/src';
-import type { AppConfig } from '../config';
+} from "../../../shared/src";
+import type { AppConfig } from "../config";
 import type {
   PriceProvider,
   PriceStreamHandlers,
   UnsubscribeFn,
-} from './PriceProvider';
+} from "./PriceProvider";
 
-const log = getLogger('providers.AlpacaProvider');
+const log = getLogger("providers.AlpacaProvider");
 
 // -----------------------------------------------------------------------------
 // Alpaca implementation of PriceProvider.
@@ -75,14 +75,14 @@ interface AlpacaAsset {
 }
 
 type WsAuthMsg = {
-  T: 'success' | 'error' | 'subscription';
+  T: "success" | "error" | "subscription";
   msg?: string;
   code?: number;
   trades?: string[];
 };
-type WsTradeMsg = { T: 't'; S: string; p: number; t: string };
+type WsTradeMsg = { T: "t"; S: string; p: number; t: string };
 type WsQuoteMsg = {
-  T: 'q';
+  T: "q";
   S: string;
   ap: number;
   bp: number;
@@ -91,7 +91,7 @@ type WsQuoteMsg = {
 type WsMsg = WsAuthMsg | WsTradeMsg | WsQuoteMsg;
 
 export class AlpacaProvider implements PriceProvider {
-  readonly name = 'alpaca';
+  readonly name = "alpaca";
 
   private ws: WebSocket | null = null;
   private handlers: PriceStreamHandlers | null = null;
@@ -110,25 +110,29 @@ export class AlpacaProvider implements PriceProvider {
     if (symbols.length === 0) return {};
     const unique = Array.from(new Set(symbols.map((s) => s.toUpperCase())));
     log.debug(
-      { operation: 'alpaca.fetchQuotes', count: unique.length, symbols: unique },
-      'fetchQuotes',
+      {
+        operation: "alpaca.fetchQuotes",
+        count: unique.length,
+        symbols: unique,
+      },
+      "fetchQuotes",
     );
-    const url = new URL('/v2/stocks/snapshots', this.cfg.alpaca.restBaseUrl);
-    url.searchParams.set('symbols', unique.join(','));
-    url.searchParams.set('feed', this.cfg.alpaca.feed);
+    const url = new URL("/v2/stocks/snapshots", this.cfg.alpaca.restBaseUrl);
+    url.searchParams.set("symbols", unique.join(","));
+    url.searchParams.set("feed", this.cfg.alpaca.feed);
 
     const res = await fetch(url, { headers: this.restHeaders() });
     if (!res.ok) {
       const body = await res.text().catch((readErr: unknown) => {
-        log.warn(
+        log.error(
           {
             err: readErr,
-            operation: 'alpaca.snapshots.readErrorBody',
+            operation: "alpaca.snapshots.readErrorBody",
             status: res.status,
           },
-          'failed to read Alpaca snapshots error body',
+          "failed to read Alpaca snapshots error body",
         );
-        return '';
+        return "";
       });
       throw new Error(
         `Alpaca snapshots failed: ${res.status} ${res.statusText} ${body}`,
@@ -139,7 +143,7 @@ export class AlpacaProvider implements PriceProvider {
     // Alpaca has varied between returning the object keyed directly by symbol
     // and returning { snapshots: {...} }. Accept both.
     const snapshots: AlpacaSnapshotsResponse =
-      typeof raw.snapshots === 'object' && raw.snapshots !== null
+      typeof raw.snapshots === "object" && raw.snapshots !== null
         ? (raw.snapshots as AlpacaSnapshotsResponse)
         : (raw as AlpacaSnapshotsResponse);
 
@@ -160,25 +164,25 @@ export class AlpacaProvider implements PriceProvider {
     limit: number,
   ): Promise<Bar[]> {
     const sym = symbol.toUpperCase();
-    const url = new URL('/v2/stocks/bars', this.cfg.alpaca.restBaseUrl);
-    url.searchParams.set('symbols', sym);
-    url.searchParams.set('timeframe', timeframe);
-    url.searchParams.set('limit', String(limit));
-    url.searchParams.set('feed', this.cfg.alpaca.feed);
-    url.searchParams.set('adjustment', 'raw');
+    const url = new URL("/v2/stocks/bars", this.cfg.alpaca.restBaseUrl);
+    url.searchParams.set("symbols", sym);
+    url.searchParams.set("timeframe", timeframe);
+    url.searchParams.set("limit", String(limit));
+    url.searchParams.set("feed", this.cfg.alpaca.feed);
+    url.searchParams.set("adjustment", "raw");
 
     const res = await fetch(url, { headers: this.restHeaders() });
     if (!res.ok) {
       const body = await res.text().catch((readErr: unknown) => {
-        log.warn(
+        log.error(
           {
             err: readErr,
-            operation: 'alpaca.bars.readErrorBody',
+            operation: "alpaca.bars.readErrorBody",
             status: res.status,
           },
-          'failed to read Alpaca bars error body',
+          "failed to read Alpaca bars error body",
         );
-        return '';
+        return "";
       });
       throw new Error(
         `Alpaca bars failed: ${res.status} ${res.statusText} ${body}`,
@@ -226,14 +230,10 @@ export class AlpacaProvider implements PriceProvider {
     }
 
     if (toAdd.length > 0) {
-      this.ws.send(
-        JSON.stringify({ action: 'subscribe', trades: toAdd }),
-      );
+      this.ws.send(JSON.stringify({ action: "subscribe", trades: toAdd }));
     }
     if (toRemove.length > 0) {
-      this.ws.send(
-        JSON.stringify({ action: 'unsubscribe', trades: toRemove }),
-      );
+      this.ws.send(JSON.stringify({ action: "unsubscribe", trades: toRemove }));
     }
   }
 
@@ -256,15 +256,15 @@ export class AlpacaProvider implements PriceProvider {
     if (res.status === 404) return null;
     if (!res.ok) {
       const body = await res.text().catch((readErr: unknown) => {
-        log.warn(
+        log.error(
           {
             err: readErr,
-            operation: 'alpaca.assets.readErrorBody',
+            operation: "alpaca.assets.readErrorBody",
             status: res.status,
           },
-          'failed to read Alpaca assets error body',
+          "failed to read Alpaca assets error body",
         );
-        return '';
+        return "";
       });
       throw new Error(
         `Alpaca assets failed: ${res.status} ${res.statusText} ${body}`,
@@ -283,9 +283,9 @@ export class AlpacaProvider implements PriceProvider {
 
   private restHeaders(): Record<string, string> {
     return {
-      'APCA-API-KEY-ID': this.cfg.alpaca.keyId,
-      'APCA-API-SECRET-KEY': this.cfg.alpaca.secretKey,
-      Accept: 'application/json',
+      "APCA-API-KEY-ID": this.cfg.alpaca.keyId,
+      "APCA-API-SECRET-KEY": this.cfg.alpaca.secretKey,
+      Accept: "application/json",
     };
   }
 
@@ -294,17 +294,17 @@ export class AlpacaProvider implements PriceProvider {
     this.authenticated = false;
     this.ws = new WebSocket(this.cfg.alpaca.wsUrl);
 
-    this.ws.on('open', () => {
+    this.ws.on("open", () => {
       this.ws?.send(
         JSON.stringify({
-          action: 'auth',
+          action: "auth",
           key: this.cfg.alpaca.keyId,
           secret: this.cfg.alpaca.secretKey,
         }),
       );
     });
 
-    this.ws.on('message', (raw) => {
+    this.ws.on("message", (raw) => {
       let msgs: WsMsg[];
       try {
         msgs = JSON.parse(raw.toString()) as WsMsg[];
@@ -314,13 +314,13 @@ export class AlpacaProvider implements PriceProvider {
       for (const msg of msgs) this.handleMessage(msg);
     });
 
-    this.ws.on('error', (err: Error) => {
-      this.handlers?.onStatusChange('error', err.message);
+    this.ws.on("error", (err: Error) => {
+      this.handlers?.onStatusChange("error", err.message);
     });
 
-    this.ws.on('close', () => {
+    this.ws.on("close", () => {
       this.authenticated = false;
-      this.handlers?.onStatusChange('disconnected');
+      this.handlers?.onStatusChange("disconnected");
       if (this.shuttingDown) return;
       this.reconnectTimer = setTimeout(
         () => this.connect(),
@@ -330,7 +330,7 @@ export class AlpacaProvider implements PriceProvider {
   }
 
   private handleMessage(msg: WsMsg): void {
-    if (msg.T === 't') {
+    if (msg.T === "t") {
       // Trade tick.
       const price = msg.p;
       const timestamp = Date.parse(msg.t) || Date.now();
@@ -344,25 +344,23 @@ export class AlpacaProvider implements PriceProvider {
         dayLow: null,
         prevClose: null,
         timestamp,
-        status: 'live',
+        status: "live",
       };
       this.handlers?.onQuote(quote);
       return;
     }
-    if (msg.T === 'success' && msg.msg === 'authenticated') {
+    if (msg.T === "success" && msg.msg === "authenticated") {
       this.authenticated = true;
-      this.handlers?.onStatusChange('connected');
+      this.handlers?.onStatusChange("connected");
       // Drain pending subscriptions built up before auth completed.
       const initial = Array.from(this.subscribed);
       if (initial.length > 0) {
-        this.ws?.send(
-          JSON.stringify({ action: 'subscribe', trades: initial }),
-        );
+        this.ws?.send(JSON.stringify({ action: "subscribe", trades: initial }));
       }
       if (this.pendingUnsubscribe.size > 0) {
         this.ws?.send(
           JSON.stringify({
-            action: 'unsubscribe',
+            action: "unsubscribe",
             trades: Array.from(this.pendingUnsubscribe),
           }),
         );
@@ -371,8 +369,8 @@ export class AlpacaProvider implements PriceProvider {
       this.pendingSubscribe.clear();
       return;
     }
-    if (msg.T === 'error') {
-      this.handlers?.onStatusChange('error', msg.msg);
+    if (msg.T === "error") {
+      this.handlers?.onStatusChange("error", msg.msg);
     }
   }
 }
@@ -398,7 +396,7 @@ function alpacaSnapshotToQuote(symbol: string, snap: AlpacaSnapshot): Quote {
     dayLow: daily?.l ?? null,
     prevClose: prevDaily?.c ?? null,
     timestamp,
-    status: 'live',
+    status: "live",
   };
 }
 

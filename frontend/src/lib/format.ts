@@ -39,3 +39,29 @@ export const timeAgo = (ts: number): string => {
   if (d < 86_400_000) return `${Math.floor(d / 3_600_000)}h ago`;
   return `${Math.floor(d / 86_400_000)}d ago`;
 };
+
+// Renders a UTC ms timestamp in the user's local timezone. Per the timezone
+// golden rule, conversion happens only at the display edge — `ts` is UTC ms,
+// the browser handles the local-zone conversion.
+export const fmtLocalTime = (ts: number): string => {
+  const d = new Date(ts);
+  const today = new Date();
+  const sameDay =
+    d.getFullYear() === today.getFullYear() &&
+    d.getMonth() === today.getMonth() &&
+    d.getDate() === today.getDate();
+  if (sameDay) {
+    return d.toLocaleTimeString(undefined, {
+      hour: 'numeric',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+  }
+  return d.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+};

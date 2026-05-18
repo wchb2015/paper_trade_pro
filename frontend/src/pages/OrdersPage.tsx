@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Empty } from '../components/Empty';
 import { ORDER_TYPES } from '../components/TradeTicket';
-import { timeAgo } from '../lib/format';
+import { fmtLocalTime } from '../lib/format';
 import type { Market, Order, OrderType, Portfolio } from '../lib/types';
 
 interface OrdersPageProps {
@@ -101,7 +101,7 @@ export function OrdersPage({
               {rows.map((o) => (
                 <tr key={o.id}>
                   <td style={{ color: 'var(--text-muted)' }}>
-                    {timeAgo(o.createdAt)}
+                    {fmtLocalTime(o.createdAt)}
                   </td>
                   <td>
                     <div className="ticker">{o.ticker}</div>

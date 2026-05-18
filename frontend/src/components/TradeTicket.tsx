@@ -7,6 +7,7 @@ import type {
   Portfolio,
   TimeInForce,
 } from '../lib/types';
+import { askOrPrice, bidOrPrice } from '../lib/quote';
 import type { PlaceOrderInput } from '../hooks/usePortfolio';
 
 export const ORDER_TYPES: { value: OrderType; label: string }[] = [
@@ -102,11 +103,16 @@ export function TradeTicket({
   );
 
   const estimate = useMemo(() => {
+    // Fall back to last trade price when bid/ask isn't published — replay files
+    // are trades-only, and the live WS handler currently emits null bid/ask too.
+    // Mirrors the fill-pricing rule in usePortfolio.placeOrder.
     const p =
       type === 'market'
-        ? side === 'buy' || side === 'cover'
-          ? m?.ask
-          : m?.bid
+        ? m
+          ? side === 'buy' || side === 'cover'
+            ? askOrPrice(m)
+            : bidOrPrice(m)
+          : 0
         : type === 'limit'
           ? +limitPrice
           : type === 'stop'

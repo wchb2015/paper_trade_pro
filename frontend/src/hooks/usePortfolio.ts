@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "react-hot-toast";
 import type {
   AddAlertInput,
+  Alert,
   Market,
   PlaceOrderInput as SharedPlaceOrderInput,
   Portfolio,
@@ -8,6 +10,52 @@ import type {
 } from "../lib/types";
 import { askOrPrice, bidOrPrice } from "../lib/quote";
 import { portfolioClient } from "../lib/portfolioClient";
+
+// User-visible notification when a price alert fires. We surface BOTH a
+// react-hot-toast (always works while the tab is foregrounded) AND an OS-level
+// Notification (works even when the tab is backgrounded, provided the user has
+// granted permission). Permission is requested lazily on the first trigger;
+// browsers ignore the call if permission was already granted/denied.
+function notifyAlertTriggered(alert: Alert, firedPrice: number): void {
+  const direction = alert.condition === "above" ? "above" : "below";
+  const title = `${alert.ticker} alert triggered`;
+  const body = `Price is ${direction} $${alert.price.toFixed(
+    2,
+  )} (now $${firedPrice.toFixed(2)})`;
+
+  try {
+    toast.success(`${title} — ${body}`, { duration: 6000 });
+  } catch (err) {
+    // Toast failure must not swallow the alert — log loudly per CLAUDE.md.
+    console.error("ERROR alert toast failed", { err, alert });
+  }
+
+  if (typeof window === "undefined" || !("Notification" in window)) return;
+
+  const fire = () => {
+    try {
+      new Notification(title, { body, tag: `alert-${alert.id}` });
+    } catch (err) {
+      console.error("ERROR browser Notification failed", { err, alert });
+    }
+  };
+
+  if (Notification.permission === "granted") {
+    fire();
+  } else if (Notification.permission === "default") {
+    Notification.requestPermission()
+      .then((perm) => {
+        if (perm === "granted") fire();
+      })
+      .catch((err) => {
+        console.error("ERROR Notification.requestPermission failed", {
+          err,
+          alert,
+        });
+      });
+  }
+  // 'denied' → silently skip OS notification; the toast still fired.
+}
 
 // -----------------------------------------------------------------------------
 // usePortfolio — the single surface UI code uses for positions, orders,
@@ -196,6 +244,18 @@ export function usePortfolio(market: Market): UsePortfolioResult {
 
   const addAlert = useCallback(
     (alert: AddAlertInput) => {
+      // Creating an alert is a user gesture, so this is the right moment to
+      // request OS-notification permission. Doing it later from the market-tick
+      // evaluator would be rejected by Chrome (no user activation).
+      if (
+        typeof window !== "undefined" &&
+        "Notification" in window &&
+        Notification.permission === "default"
+      ) {
+        Notification.requestPermission().catch((err) => {
+          console.error("ERROR Notification.requestPermission failed", { err });
+        });
+      }
       portfolioClient.addAlert(alert).then(applyPortfolio).catch(handleError);
     },
     [applyPortfolio, handleError],
@@ -330,9 +390,14 @@ export function usePortfolio(market: Market): UsePortfolioResult {
         a.condition === "above" ? m.price >= a.price : m.price <= a.price;
       if (hit) {
         inFlight.current.add(fireKey);
+        const firedPrice = m.price;
+        const firedAlert = a;
         portfolioClient
-          .triggerAlert(a.id, { price: m.price })
-          .then(applyPortfolio)
+          .triggerAlert(a.id, { price: firedPrice })
+          .then((p) => {
+            notifyAlertTriggered(firedAlert, firedPrice);
+            applyPortfolio(p);
+          })
           .catch(handleError)
           .finally(() => {
             inFlight.current.delete(fireKey);
