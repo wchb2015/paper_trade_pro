@@ -55,6 +55,7 @@ export default function App() {
     portfolio,
     valuation,
     placeOrder,
+    cancelOrder,
     resetFunds,
     toggleWatch,
     addAlert,
@@ -147,6 +148,7 @@ export default function App() {
           portfolio={portfolio}
           valuation={effectiveValuation}
           toggleWatch={toggleWatch}
+          cancelOrder={cancelOrder}
           toggleAlert={toggleAlert}
           removeAlert={removeAlert}
           resetFunds={resetFunds}

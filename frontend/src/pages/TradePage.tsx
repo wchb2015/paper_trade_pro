@@ -1,9 +1,9 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { toast } from 'react-hot-toast';
 import { Icon } from '../components/Icon';
 import { PriceChart } from '../components/PriceChart';
 import { Empty } from '../components/Empty';
-import { fmtMoney, fmtPct } from '../lib/format';
+import { fmtLocalTime, fmtMoney, fmtPct } from '../lib/format';
 import { dayChange, dayChangePct, money } from '../lib/quote';
 import { useBars } from '../hooks/useBars';
 import { priceClient } from '../lib/priceClient';
@@ -23,6 +23,8 @@ interface TradePageProps {
   toggleWatch: (ticker: string) => void;
   setTradeCtx: (ctx: TradeCtx | null) => void;
   setAlertCtx: (ctx: AlertCtx | null) => void;
+  cancelOrder: (id: string) => void;
+  removeAlert: (id: string) => void;
   onNavigate: (page: PageKey, ticker?: string) => void;
   /** Currently active live WS feed reported by the server. */
   liveFeed: AlpacaFeed | null;
@@ -31,9 +33,6 @@ interface TradePageProps {
 type RangeKey = '1D' | '1W' | '1M' | '3M';
 
 // Each visible range maps to the bar resolution + how many bars to request.
-// 1D uses 1Min bars (~390 trading minutes); the longer ranges roll up to 1Day
-// candles where one bar = one trading day. The backend caches /api/bars per
-// (symbol, timeframe, limit) so polling here is cheap.
 const rangeConfig: Record<
   RangeKey,
   { timeframe: BarTimeframe; limit: number; xLabel: 'date' | 'time' }
@@ -44,6 +43,9 @@ const rangeConfig: Record<
   '3M': { timeframe: '1Day', limit: 66, xLabel: 'date' },
 };
 
+const TICKER_RE = /^[A-Z][A-Z0-9.]{0,7}$/;
+const RECENT_KEY = 'paperTradePro.recentSymbols';
+
 export function TradePage({
   ticker,
   market,
@@ -51,19 +53,60 @@ export function TradePage({
   toggleWatch,
   setTradeCtx,
   setAlertCtx,
+  cancelOrder,
+  removeAlert,
   onNavigate,
   liveFeed,
 }: TradePageProps) {
-  const m = market[ticker];
+  // Mirror the prop-driven ticker into local state so the rail can switch
+  // symbol without leaving the page. Also reflect the change up to App via
+  // onNavigate so persisted state survives reloads.
+  const [activeTicker, setActiveTicker] = useState(ticker);
+  useEffect(() => {
+    setActiveTicker(ticker);
+  }, [ticker]);
+
   const [range, setRange] = useState<RangeKey>('1M');
-  // 1D extended-hours mode. 'rth' = filter to 09:30–16:00 ET (default);
-  // 'iex' = full IEX-feed payload, ~08:00–17:00 ET; 'sip' = paid SIP feed,
-  // full 04:00–20:00 ET. Picking 'iex' or 'sip' also POSTs /api/live-feed
-  // so the live WS tick stream stays coherent with the bars on screen.
   const [extMode, setExtMode] = useState<'rth' | 'iex' | 'sip'>('rth');
-  // Pending while a feed-switch network request is in flight. Disables the
-  // segmented control so users can't queue overlapping switches that race.
   const [feedSwitching, setFeedSwitching] = useState(false);
+
+  const [search, setSearch] = useState('');
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [recent, setRecent] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem(RECENT_KEY);
+      return raw ? (JSON.parse(raw) as string[]) : [];
+    } catch (err) {
+      console.error('ERROR load recent symbols', err);
+      return [];
+    }
+  });
+
+  const switchTo = (sym: string) => {
+    setActiveTicker(sym);
+    onNavigate('trade', sym);
+    setRecent((prev) => {
+      const next = [sym, ...prev.filter((t) => t !== sym)].slice(0, 5);
+      try {
+        localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+      } catch (err) {
+        console.error('ERROR persist recent symbols', err);
+      }
+      return next;
+    });
+  };
+
+  const submitSearch = () => {
+    const sym = search.trim().toUpperCase();
+    if (!sym) return;
+    if (!TICKER_RE.test(sym)) {
+      setSearchError('Letters/digits/dot, max 8 chars (e.g. AAPL, BRK.B).');
+      return;
+    }
+    setSearchError(null);
+    setSearch('');
+    switchTo(sym);
+  };
 
   const onPickExtMode = async (next: 'rth' | 'iex' | 'sip') => {
     if (next === 'rth') {
@@ -81,43 +124,82 @@ export function TradePage({
             ` — using ${result.feed.toUpperCase()}`,
           { icon: 'ℹ️', duration: 6000 },
         );
-        // Snap the segmented control to whatever feed the server actually
-        // landed on so the UI doesn't lie. Historical bars on screen will
-        // re-fetch on the next 60s tick (or right now via the dep change).
         setExtMode(result.feed);
       }
     } catch (err) {
-      // Network/5xx — api() already toasted with a ref id. Revert the UI
-      // optimism so the user can retry; preserve the prior mode by reading
-      // the actual server feed.
       console.error('ERROR setLiveFeed failed', err);
       setExtMode(liveFeed ?? 'rth');
     } finally {
       setFeedSwitching(false);
     }
   };
+
+  const renderRail = () => (
+    <aside className="trade-rail">
+      <input
+        className="input mono"
+        placeholder="Search ticker"
+        value={search}
+        onChange={(e) => {
+          setSearch(e.target.value.toUpperCase());
+          if (searchError) setSearchError(null);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') submitSearch();
+        }}
+        autoCapitalize="characters"
+        autoCorrect="off"
+        spellCheck={false}
+      />
+      {searchError && <div className="trade-rail-error">{searchError}</div>}
+
+      <div className="trade-rail-section-label">Watchlist</div>
+      {portfolio.watchlist.length === 0 ? (
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '0 8px' }}>
+          No symbols yet
+        </div>
+      ) : (
+        portfolio.watchlist.map((t) => (
+          <div
+            key={t}
+            className={`trade-rail-row ${t === activeTicker ? 'active' : ''}`}
+            onClick={() => switchTo(t)}
+          >
+            {t}
+          </div>
+        ))
+      )}
+
+      {recent.length > 0 && (
+        <>
+          <div className="trade-rail-section-label">Recent</div>
+          {recent.map((t) => (
+            <div
+              key={t}
+              className={`trade-rail-row ${t === activeTicker ? 'active' : ''}`}
+              onClick={() => switchTo(t)}
+            >
+              {t}
+            </div>
+          ))}
+        </>
+      )}
+    </aside>
+  );
+
   const cfg = rangeConfig[range];
-  // Only pass `feed` to the backend when the user has explicitly chosen one.
-  // 'rth' uses the server's default feed (env-configured) and we filter to
-  // regular trading hours client-side.
   const requestedFeed: AlpacaFeed | undefined =
     range === '1D' && extMode !== 'rth' ? extMode : undefined;
-  // Pull historical OHLC for the selected range. useBars polls every minute
-  // so the latest candle keeps refreshing; backend caches per
-  // (sym, tf, limit, feed) so this is cheap. Single-symbol fetch -> result
-  // keyed by ticker.
   const barsBySymbol = useBars(
-    [ticker],
+    [activeTicker],
     cfg.timeframe,
     cfg.limit,
     60_000,
     requestedFeed,
   );
-  const rawBars = barsBySymbol[ticker] ?? [];
+  const rawBars = barsBySymbol[activeTicker] ?? [];
   const bars =
     range === '1D' && extMode === 'rth' ? filterRegularHours(rawBars) : rawBars;
-  // First-bar-open -> last-bar-close % across the visible window. Drives
-  // the colored chip next to the range buttons for 1W/1M/3M.
   const rangeChange =
     bars.length >= 2
       ? {
@@ -126,32 +208,34 @@ export function TradePage({
         }
       : null;
 
+  const m = market[activeTicker];
+
   if (!m) {
     return (
-      <Empty
-        title="Stock not found"
-        action={
-          <button className="btn" onClick={() => onNavigate('watchlist')}>
-            Back to watchlist
-          </button>
-        }
-      />
+      <div className="trade-shell">
+        {renderRail()}
+        <div>
+          <Empty
+            title={`No quote for ${activeTicker}`}
+            subtitle="Try a different symbol or check the data provider status."
+          />
+        </div>
+      </div>
     );
   }
 
   const chartPoints = bars.map((b) => ({ t: b.t, p: b.c }));
   const pct = dayChangePct(m);
   const change = dayChange(m);
-  // Color the big price + change row by day direction (vs prev close).
   const dayDir =
     change == null || change === 0 ? null : change > 0 ? 'up' : 'down';
 
-  const inWatch = portfolio.watchlist.includes(ticker);
+  const inWatch = portfolio.watchlist.includes(activeTicker);
   const longPos = portfolio.positions.find(
-    (p) => p.ticker === ticker && p.side === 'long',
+    (p) => p.ticker === activeTicker && p.side === 'long',
   );
   const shortPos = portfolio.positions.find(
-    (p) => p.ticker === ticker && p.side === 'short',
+    (p) => p.ticker === activeTicker && p.side === 'short',
   );
 
   const stats: [string, ReactNode][] = [
@@ -163,344 +247,455 @@ export function TradePage({
     ['Prev Close', money(m.prevClose)],
   ];
 
+  const symbolOrders = portfolio.orders.filter(
+    (o) =>
+      o.ticker === activeTicker &&
+      (o.status === 'pending' || o.status === 'pending_fill'),
+  );
+  const symbolAlerts = portfolio.alerts.filter(
+    (a) => a.ticker === activeTicker && !a.triggeredAt,
+  );
+
   return (
-    <div>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          marginBottom: 6,
-        }}
-      >
-        <button
-          className="btn ghost sm"
-          onClick={() => onNavigate('watchlist')}
-        >
-          ← Watchlist
-        </button>
-      </div>
-      <div className="page-header">
-        <div>
-          <div
-            style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}
-          >
-            <h1 className="page-title" style={{ margin: 0 }}>
-              {ticker}
-            </h1>
-          </div>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'baseline',
-              gap: 14,
-              marginTop: 10,
-            }}
-          >
+    <div className="trade-shell">
+      {renderRail()}
+
+      <div>
+        <div className="page-header">
+          <div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+              <h1 className="page-title" style={{ margin: 0 }}>
+                {activeTicker}
+              </h1>
+            </div>
             <div
-              className={`mono tnum ${dayDir ?? ''}`}
               style={{
-                fontSize: 34,
-                fontWeight: 600,
-                letterSpacing: '-0.02em',
+                display: 'flex',
+                alignItems: 'baseline',
+                gap: 14,
+                marginTop: 10,
               }}
             >
-              ${m.price.toFixed(2)}
-            </div>
-            <div>
-              {change == null || pct == null ? (
-                <div
-                  className="mono tnum"
-                  style={{
-                    fontSize: 15,
-                    fontWeight: 500,
-                    color: 'var(--text-muted)',
-                  }}
-                >
-                  —
-                </div>
-              ) : (
-                <div
-                  className={`mono tnum ${pct >= 0 ? 'up' : 'down'}`}
-                  style={{ fontSize: 15, fontWeight: 500 }}
-                >
-                  {change >= 0 ? '+' : ''}
-                  {change.toFixed(2)}{' '}
-                  <span className={`chip ${pct >= 0 ? 'up' : 'down'}`}>
-                    {fmtPct(pct)}
-                  </span>
-                </div>
-              )}
               <div
+                className={`mono tnum ${dayDir ?? ''}`}
                 style={{
-                  fontSize: 11.5,
-                  color: 'var(--text-muted)',
-                  marginTop: 2,
+                  fontSize: 34,
+                  fontWeight: 600,
+                  letterSpacing: '-0.02em',
                 }}
               >
-                Today
+                ${m.price.toFixed(2)}
               </div>
-            </div>
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn" onClick={() => toggleWatch(ticker)}>
-            <Icon name={inWatch ? 'starFilled' : 'star'} size={14} />
-            {inWatch ? 'Watching' : 'Watch'}
-          </button>
-          <button className="btn" onClick={() => setAlertCtx({ ticker })}>
-            <Icon name="alerts" size={14} /> Alert
-          </button>
-        </div>
-      </div>
-
-      <div className="detail-layout">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div className="card">
-            <div className="card-header">
-              <div
-                style={{ display: 'flex', alignItems: 'center', gap: 10 }}
-              >
-                <h3 className="card-title">Price</h3>
-                {range !== '1D' && rangeChange && (
-                  <span
-                    className={`chip ${rangeChange.pct >= 0 ? 'up' : 'down'}`}
-                    title={`${range} change: ${rangeChange.abs >= 0 ? '+' : ''}${rangeChange.abs.toFixed(2)}`}
-                  >
-                    {fmtPct(rangeChange.pct)}
-                  </span>
-                )}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {range === '1D' && (
-                  <div
-                    className="segmented"
-                    title="Switch the data feed: RTH = regular hours only, IEX = free IEX-only feed (~8a-5p ET), SIP = paid consolidated tape (4a-8p ET)"
-                  >
-                    <button
-                      className={extMode === 'rth' ? 'active' : ''}
-                      onClick={() => void onPickExtMode('rth')}
-                      disabled={feedSwitching}
-                    >
-                      RTH
-                    </button>
-                    <button
-                      className={extMode === 'iex' ? 'active' : ''}
-                      onClick={() => void onPickExtMode('iex')}
-                      disabled={feedSwitching}
-                    >
-                      Ext (IEX)
-                    </button>
-                    <button
-                      className={extMode === 'sip' ? 'active' : ''}
-                      onClick={() => void onPickExtMode('sip')}
-                      disabled={feedSwitching}
-                    >
-                      Ext (SIP)
-                    </button>
-                  </div>
-                )}
-                <div className="segmented">
-                  {(Object.keys(rangeConfig) as RangeKey[]).map((r) => (
-                    <button
-                      key={r}
-                      className={range === r ? 'active' : ''}
-                      onClick={() => setRange(r)}
-                    >
-                      {r}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <div className="card-body">
-              {chartPoints.length >= 2 ? (
-                <PriceChart
-                  points={chartPoints}
-                  height={320}
-                  xLabelMode={cfg.xLabel}
-                />
-              ) : (
-                <div
-                  style={{
-                    height: 320,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: 'var(--text-muted)',
-                    fontSize: 13,
-                  }}
-                >
-                  {bars.length === 0
-                    ? 'Loading historical bars…'
-                    : `No ${range} data available for this symbol.`}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="card-header">
-              <h3 className="card-title">Key stats</h3>
-            </div>
-            <div
-              className="card-body"
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(4, 1fr)',
-                gap: 18,
-              }}
-            >
-              {stats.map(([k, v]) => (
-                <div key={k}>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      color: 'var(--text-muted)',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.05em',
-                    }}
-                  >
-                    {k}
-                  </div>
+              <div>
+                {change == null || pct == null ? (
                   <div
                     className="mono tnum"
-                    style={{ marginTop: 4, fontSize: 14, fontWeight: 500 }}
+                    style={{
+                      fontSize: 15,
+                      fontWeight: 500,
+                      color: 'var(--text-muted)',
+                    }}
                   >
-                    {v}
+                    —
                   </div>
+                ) : (
+                  <div
+                    className={`mono tnum ${pct >= 0 ? 'up' : 'down'}`}
+                    style={{ fontSize: 15, fontWeight: 500 }}
+                  >
+                    {change >= 0 ? '+' : ''}
+                    {change.toFixed(2)}{' '}
+                    <span className={`chip ${pct >= 0 ? 'up' : 'down'}`}>
+                      {fmtPct(pct)}
+                    </span>
+                  </div>
+                )}
+                <div
+                  style={{
+                    fontSize: 11.5,
+                    color: 'var(--text-muted)',
+                    marginTop: 2,
+                  }}
+                >
+                  Today
                 </div>
-              ))}
+              </div>
             </div>
           </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn" onClick={() => toggleWatch(activeTicker)}>
+              <Icon name={inWatch ? 'starFilled' : 'star'} size={14} />
+              {inWatch ? 'Watching' : 'Watch'}
+            </button>
+            <button className="btn" onClick={() => setAlertCtx({ ticker: activeTicker })}>
+              <Icon name="alerts" size={14} /> Alert
+            </button>
+          </div>
+        </div>
 
-          {(longPos || shortPos) && (
+        <div className="detail-layout">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div className="card">
               <div className="card-header">
-                <h3 className="card-title">Your position</h3>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <h3 className="card-title">Price</h3>
+                  {range !== '1D' && rangeChange && (
+                    <span
+                      className={`chip ${rangeChange.pct >= 0 ? 'up' : 'down'}`}
+                      title={`${range} change: ${rangeChange.abs >= 0 ? '+' : ''}${rangeChange.abs.toFixed(2)}`}
+                    >
+                      {fmtPct(rangeChange.pct)}
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {range === '1D' && (
+                    <div
+                      className="segmented"
+                      title="Switch the data feed: RTH = regular hours only, IEX = free IEX-only feed (~8a-5p ET), SIP = paid consolidated tape (4a-8p ET)"
+                    >
+                      <button
+                        className={extMode === 'rth' ? 'active' : ''}
+                        onClick={() => void onPickExtMode('rth')}
+                        disabled={feedSwitching}
+                      >
+                        RTH
+                      </button>
+                      <button
+                        className={extMode === 'iex' ? 'active' : ''}
+                        onClick={() => void onPickExtMode('iex')}
+                        disabled={feedSwitching}
+                      >
+                        Ext (IEX)
+                      </button>
+                      <button
+                        className={extMode === 'sip' ? 'active' : ''}
+                        onClick={() => void onPickExtMode('sip')}
+                        disabled={feedSwitching}
+                      >
+                        Ext (SIP)
+                      </button>
+                    </div>
+                  )}
+                  <div className="segmented">
+                    {(Object.keys(rangeConfig) as RangeKey[]).map((r) => (
+                      <button
+                        key={r}
+                        className={range === r ? 'active' : ''}
+                        onClick={() => setRange(r)}
+                      >
+                        {r}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="card-body">
+                {chartPoints.length >= 2 ? (
+                  <PriceChart
+                    points={chartPoints}
+                    height={320}
+                    xLabelMode={cfg.xLabel}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      height: 320,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'var(--text-muted)',
+                      fontSize: 13,
+                    }}
+                  >
+                    {bars.length === 0
+                      ? 'Loading historical bars…'
+                      : `No ${range} data available for this symbol.`}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="card-header">
+                <h3 className="card-title">Key stats</h3>
               </div>
               <div
                 className="card-body"
-                style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(4, 1fr)',
+                  gap: 18,
+                }}
               >
-                {[longPos, shortPos]
-                  .filter((p): p is NonNullable<typeof p> => Boolean(p))
-                  .map((p) => {
-                    const pnl =
-                      p.side === 'long'
-                        ? (m.price - p.avgPrice) * p.qty
-                        : (p.avgPrice - m.price) * p.qty;
-                    const pnlPct = (pnl / (p.avgPrice * p.qty)) * 100;
-                    return (
-                      <div
-                        key={p.id}
-                        style={{ display: 'flex', gap: 32, flexWrap: 'wrap' }}
-                      >
-                        <div>
-                          <div
-                            style={{
-                              fontSize: 11,
-                              color: 'var(--text-muted)',
-                              textTransform: 'uppercase',
-                            }}
-                          >
-                            Side
-                          </div>
-                          <div style={{ marginTop: 4 }}>
-                            <span className={`pill ${p.side}`}>
-                              {p.side.toUpperCase()}
-                            </span>
-                          </div>
-                        </div>
-                        <div>
-                          <div
-                            style={{
-                              fontSize: 11,
-                              color: 'var(--text-muted)',
-                              textTransform: 'uppercase',
-                            }}
-                          >
-                            Quantity
-                          </div>
-                          <div
-                            className="mono tnum"
-                            style={{ marginTop: 4, fontWeight: 500 }}
-                          >
-                            {p.qty}
-                          </div>
-                        </div>
-                        <div>
-                          <div
-                            style={{
-                              fontSize: 11,
-                              color: 'var(--text-muted)',
-                              textTransform: 'uppercase',
-                            }}
-                          >
-                            Avg Cost
-                          </div>
-                          <div
-                            className="mono tnum"
-                            style={{ marginTop: 4, fontWeight: 500 }}
-                          >
-                            ${p.avgPrice.toFixed(2)}
-                          </div>
-                        </div>
-                        <div>
-                          <div
-                            style={{
-                              fontSize: 11,
-                              color: 'var(--text-muted)',
-                              textTransform: 'uppercase',
-                            }}
-                          >
-                            Unrealized P&L
-                          </div>
-                          <div
-                            className="mono tnum"
-                            style={{
-                              marginTop: 4,
-                              fontWeight: 500,
-                              color: pnl >= 0 ? 'var(--up)' : 'var(--down)',
-                            }}
-                          >
-                            {fmtMoney(pnl, { signed: true })} (
-                            {fmtPct(pnlPct)})
-                          </div>
-                        </div>
-                        <div
-                          style={{
-                            marginLeft: 'auto',
-                            display: 'flex',
-                            gap: 6,
-                          }}
-                        >
-                          <button
-                            className="btn sm"
-                            onClick={() =>
-                              setTradeCtx({
-                                ticker,
-                                side: p.side === 'long' ? 'sell' : 'cover',
-                              })
-                            }
-                          >
-                            Close
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
+                {stats.map(([k, v]) => (
+                  <div key={k}>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: 'var(--text-muted)',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em',
+                      }}
+                    >
+                      {k}
+                    </div>
+                    <div
+                      className="mono tnum"
+                      style={{ marginTop: 4, fontSize: 14, fontWeight: 500 }}
+                    >
+                      {v}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
-          )}
+
+            {(longPos || shortPos) && (
+              <div className="card">
+                <div className="card-header">
+                  <h3 className="card-title">Your position</h3>
+                </div>
+                <div
+                  className="card-body"
+                  style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}
+                >
+                  {[longPos, shortPos]
+                    .filter((p): p is NonNullable<typeof p> => Boolean(p))
+                    .map((p) => {
+                      const pnl =
+                        p.side === 'long'
+                          ? (m.price - p.avgPrice) * p.qty
+                          : (p.avgPrice - m.price) * p.qty;
+                      const pnlPct = (pnl / (p.avgPrice * p.qty)) * 100;
+                      return (
+                        <div
+                          key={p.id}
+                          style={{ display: 'flex', gap: 32, flexWrap: 'wrap' }}
+                        >
+                          <div>
+                            <div
+                              style={{
+                                fontSize: 11,
+                                color: 'var(--text-muted)',
+                                textTransform: 'uppercase',
+                              }}
+                            >
+                              Side
+                            </div>
+                            <div style={{ marginTop: 4 }}>
+                              <span className={`pill ${p.side}`}>
+                                {p.side.toUpperCase()}
+                              </span>
+                            </div>
+                          </div>
+                          <div>
+                            <div
+                              style={{
+                                fontSize: 11,
+                                color: 'var(--text-muted)',
+                                textTransform: 'uppercase',
+                              }}
+                            >
+                              Quantity
+                            </div>
+                            <div
+                              className="mono tnum"
+                              style={{ marginTop: 4, fontWeight: 500 }}
+                            >
+                              {p.qty}
+                            </div>
+                          </div>
+                          <div>
+                            <div
+                              style={{
+                                fontSize: 11,
+                                color: 'var(--text-muted)',
+                                textTransform: 'uppercase',
+                              }}
+                            >
+                              Avg Cost
+                            </div>
+                            <div
+                              className="mono tnum"
+                              style={{ marginTop: 4, fontWeight: 500 }}
+                            >
+                              ${p.avgPrice.toFixed(2)}
+                            </div>
+                          </div>
+                          <div>
+                            <div
+                              style={{
+                                fontSize: 11,
+                                color: 'var(--text-muted)',
+                                textTransform: 'uppercase',
+                              }}
+                            >
+                              Unrealized P&L
+                            </div>
+                            <div
+                              className="mono tnum"
+                              style={{
+                                marginTop: 4,
+                                fontWeight: 500,
+                                color: pnl >= 0 ? 'var(--up)' : 'var(--down)',
+                              }}
+                            >
+                              {fmtMoney(pnl, { signed: true })} (
+                              {fmtPct(pnlPct)})
+                            </div>
+                          </div>
+                          <div
+                            style={{
+                              marginLeft: 'auto',
+                              display: 'flex',
+                              gap: 6,
+                            }}
+                          >
+                            <button
+                              className="btn sm"
+                              onClick={() =>
+                                setTradeCtx({
+                                  ticker: activeTicker,
+                                  side: p.side === 'long' ? 'sell' : 'cover',
+                                })
+                              }
+                            >
+                              Close
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <OrderPanel
+            ticker={activeTicker}
+            market={market}
+            portfolio={portfolio}
+            setTradeCtx={setTradeCtx}
+          />
         </div>
 
-        <OrderPanel
-          ticker={ticker}
-          market={market}
-          portfolio={portfolio}
-          setTradeCtx={setTradeCtx}
-        />
+        {symbolOrders.length > 0 && (
+          <div className="card" style={{ marginTop: 16 }}>
+            <div className="card-header">
+              <h3 className="card-title">Working orders for {activeTicker}</h3>
+            </div>
+            <div className="card-body p0">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Action</th>
+                    <th>Type</th>
+                    <th className="num">Qty</th>
+                    <th className="num">Trigger</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {symbolOrders.map((o) => (
+                    <tr key={o.id}>
+                      <td style={{ color: 'var(--text-muted)' }}>
+                        {fmtLocalTime(o.createdAt)}
+                      </td>
+                      <td>
+                        <span
+                          className={`pill ${
+                            o.side === 'buy' || o.side === 'cover'
+                              ? 'long'
+                              : 'short'
+                          }`}
+                        >
+                          {o.side.toUpperCase()}
+                        </span>
+                      </td>
+                      <td>{o.type}</td>
+                      <td className="num">{o.qty}</td>
+                      <td className="num" style={{ fontSize: 12 }}>
+                        {o.type === 'limit'
+                          ? `Limit $${o.limitPrice?.toFixed(2) ?? '—'}`
+                          : o.type === 'stop'
+                            ? `Stop $${o.stopPrice?.toFixed(2) ?? '—'}`
+                            : o.type === 'stop_limit'
+                              ? `Stop $${o.stopPrice?.toFixed(2) ?? '—'} / Lim $${o.limitPrice?.toFixed(2) ?? '—'}`
+                              : o.type === 'trailing_stop'
+                                ? `Trail ${o.trailPct ?? '—'}%`
+                                : 'Market'}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <button
+                          className="btn sm ghost"
+                          onClick={() => cancelOrder(o.id)}
+                        >
+                          Cancel
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        <div className="card" style={{ marginTop: 16 }}>
+          <div className="card-header">
+            <h3 className="card-title">Alerts for {activeTicker}</h3>
+            <button
+              className="btn sm accent"
+              onClick={() => setAlertCtx({ ticker: activeTicker })}
+            >
+              + New alert
+            </button>
+          </div>
+          <div className="card-body p0">
+            {symbolAlerts.length === 0 ? (
+              <Empty
+                title={`No alerts on ${activeTicker}`}
+                subtitle="Click + New alert to be notified at a price you choose."
+              />
+            ) : (
+              symbolAlerts.map((a) => (
+                <div
+                  key={a.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: '10px 18px',
+                    borderBottom: '1px solid var(--border)',
+                    gap: 14,
+                  }}
+                >
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, color: 'var(--text)' }}>
+                      {a.condition === 'above' ? 'Above' : 'Below'}{' '}
+                      <span className="mono tnum" style={{ fontWeight: 600 }}>
+                        ${a.price.toFixed(2)}
+                      </span>
+                    </div>
+                    {a.note && (
+                      <div className="company" style={{ marginTop: 2 }}>
+                        {a.note}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    className="btn sm ghost icon-only"
+                    onClick={() => removeAlert(a.id)}
+                    title="Delete alert"
+                  >
+                    <Icon name="close" size={14} />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
