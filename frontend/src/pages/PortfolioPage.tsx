@@ -15,7 +15,7 @@ import type {
   Valuation,
 } from '../lib/types';
 
-interface DashboardPageProps {
+interface PortfolioPageProps {
   market: Market;
   portfolio: Portfolio;
   valuation: Valuation;
@@ -23,13 +23,13 @@ interface DashboardPageProps {
   setTradeCtx: (ctx: TradeCtx | null) => void;
 }
 
-export function DashboardPage({
+export function PortfolioPage({
   market,
   portfolio,
   valuation,
   onNavigate,
   setTradeCtx,
-}: DashboardPageProps) {
+}: PortfolioPageProps) {
   const { cash, initialCash, positions } = portfolio;
   const totalValue = valuation.equity;
   const totalPct = ((totalValue - initialCash) / initialCash) * 100;
@@ -53,7 +53,7 @@ export function DashboardPage({
         const msg = err instanceof Error ? err.message : String(err);
         // CLAUDE.md rule 4/10: never silently swallow.
         // eslint-disable-next-line no-console
-        console.error('ERROR DashboardPage.getHistory failed', { err, range });
+        console.error('ERROR PortfolioPage.getHistory failed', { err, range });
         setHistoryError(msg);
       });
     return () => {
@@ -102,7 +102,7 @@ export function DashboardPage({
     <div>
       <div className="page-header">
         <div>
-          <h1 className="page-title">Dashboard</h1>
+          <h1 className="page-title">Portfolio</h1>
           <div className="page-subtitle">
             Paper trading · Real market data
           </div>

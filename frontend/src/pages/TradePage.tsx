@@ -16,7 +16,7 @@ import type {
   TradeCtx,
 } from '../lib/types';
 
-interface DetailPageProps {
+interface TradePageProps {
   ticker: string;
   market: Market;
   portfolio: Portfolio;
@@ -44,7 +44,7 @@ const rangeConfig: Record<
   '3M': { timeframe: '1Day', limit: 66, xLabel: 'date' },
 };
 
-export function DetailPage({
+export function TradePage({
   ticker,
   market,
   portfolio,
@@ -53,7 +53,7 @@ export function DetailPage({
   setAlertCtx,
   onNavigate,
   liveFeed,
-}: DetailPageProps) {
+}: TradePageProps) {
   const m = market[ticker];
   const [range, setRange] = useState<RangeKey>('1M');
   // 1D extended-hours mode. 'rth' = filter to 09:30–16:00 ET (default);

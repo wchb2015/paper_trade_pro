@@ -1,6 +1,6 @@
-import { DashboardPage } from "../pages/DashboardPage";
+import { PortfolioPage } from "../pages/PortfolioPage";
 import { WatchlistPage } from "../pages/WatchlistPage";
-import { DetailPage } from "../pages/DetailPage";
+import { TradePage } from "../pages/TradePage";
 import { PositionsPage } from "../pages/PositionsPage";
 import { OrdersPage } from "../pages/OrdersPage";
 import { AlertsPage } from "../pages/AlertsPage";
@@ -58,7 +58,7 @@ export function PageRouter(props: PageRouterProps) {
   switch (page) {
     case "portfolio":
       return (
-        <DashboardPage
+        <PortfolioPage
           market={market}
           portfolio={portfolio}
           valuation={valuation}
@@ -81,7 +81,7 @@ export function PageRouter(props: PageRouterProps) {
       );
     case "trade":
       return (
-        <DetailPage
+        <TradePage
           ticker={activeTradeTicker}
           market={market}
           portfolio={portfolio}
