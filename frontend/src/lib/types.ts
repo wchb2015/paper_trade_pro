@@ -65,6 +65,7 @@ export type PageKey =
   | 'portfolio'
   | 'watchlist'
   | 'trade'
+  | 'orders'
   | 'alerts'
   | 'account';
 

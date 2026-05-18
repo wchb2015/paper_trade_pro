@@ -34,6 +34,14 @@ export function Sidebar({
     },
     { id: "trade", label: "Trade", icon: "positions", badge: null },
     {
+      id: "orders",
+      label: "Orders",
+      icon: "orders",
+      badge: portfolio.orders.filter(
+        (o) => o.status === "pending" || o.status === "pending_fill",
+      ).length || null,
+    },
+    {
       id: "alerts",
       label: "Alerts",
       icon: "alerts",

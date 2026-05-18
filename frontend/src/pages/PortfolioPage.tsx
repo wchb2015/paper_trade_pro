@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { dayChangePct } from '../lib/quote';
-import { fmtLocalTime, fmtMoney, fmtPct } from '../lib/format';
+import { fmtMoney, fmtPct } from '../lib/format';
 import { PriceChart, type PriceChartPoint } from '../components/PriceChart';
 import { PriceCell } from '../components/PriceCell';
 import { Sparkline } from '../components/Sparkline';
@@ -39,7 +39,7 @@ export function PortfolioPage({
   const [historyPoints, setHistoryPoints] = useState<PriceChartPoint[]>([]);
   const [historyError, setHistoryError] = useState<string | null>(null);
 
-  type Tab = 'overview' | 'positions' | 'history';
+  type Tab = 'overview' | 'positions';
   const [tab, setTab] = useState<Tab>('overview');
 
   useEffect(() => {
@@ -124,12 +124,6 @@ export function PortfolioPage({
           onClick={() => setTab('positions')}
         >
           Positions ({positions.length})
-        </button>
-        <button
-          className={tab === 'history' ? 'active' : ''}
-          onClick={() => setTab('history')}
-        >
-          History
         </button>
       </div>
 
@@ -456,65 +450,6 @@ export function PortfolioPage({
         </div>
       )}
 
-      {tab === 'history' && (
-        <div className="card">
-          {(() => {
-            const filled = portfolio.history.filter((o) => o.status === 'filled');
-            if (filled.length === 0) {
-              return (
-                <Empty
-                  title="No filled orders yet"
-                  subtitle="Once you place and fill an order it will appear here."
-                />
-              );
-            }
-            return (
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Time</th>
-                    <th>Symbol</th>
-                    <th>Action</th>
-                    <th className="num">Qty</th>
-                    <th className="num">Fill Price</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filled.map((o) => (
-                    <tr key={o.id}>
-                      <td style={{ color: 'var(--text-muted)' }}>
-                        {fmtLocalTime(o.filledAt ?? o.createdAt)}
-                      </td>
-                      <td>
-                        <div
-                          className="ticker"
-                          onClick={() => onNavigate('trade', o.ticker)}
-                          style={{ cursor: 'pointer' }}
-                        >
-                          {o.ticker}
-                        </div>
-                      </td>
-                      <td>
-                        <span
-                          className={`pill ${
-                            o.side === 'buy' || o.side === 'cover' ? 'long' : 'short'
-                          }`}
-                        >
-                          {o.side.toUpperCase()}
-                        </span>
-                      </td>
-                      <td className="num">{o.qty}</td>
-                      <td className="num">
-                        {o.fillPrice ? `$${o.fillPrice.toFixed(2)}` : '—'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            );
-          })()}
-        </div>
-      )}
     </div>
   );
 }

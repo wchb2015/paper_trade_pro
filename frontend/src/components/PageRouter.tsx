@@ -1,6 +1,7 @@
 import { PortfolioPage } from "../pages/PortfolioPage";
 import { WatchlistPage } from "../pages/WatchlistPage";
 import { TradePage } from "../pages/TradePage";
+import { OrdersPage } from "../pages/OrdersPage";
 import { AlertsPage } from "../pages/AlertsPage";
 import { AccountPage } from "../pages/AccountPage";
 import type {
@@ -90,6 +91,15 @@ export function PageRouter(props: PageRouterProps) {
           removeAlert={removeAlert}
           onNavigate={onNavigate}
           liveFeed={liveFeed}
+        />
+      );
+    case "orders":
+      return (
+        <OrdersPage
+          market={market}
+          portfolio={portfolio}
+          cancelOrder={cancelOrder}
+          onNavigate={onNavigate}
         />
       );
     case "alerts":
