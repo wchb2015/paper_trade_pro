@@ -43,6 +43,8 @@ export function TradeTicket({
   const [side, setSide] = useState<OrderSide>(initialSide);
   const [type, setType] = useState<OrderType>('market');
   const [qty, setQty] = useState<number | string>(10);
+  const [budgetOpen, setBudgetOpen] = useState(false);
+  const [budget, setBudget] = useState<string>('30000');
   const [limitPrice, setLimitPrice] = useState<string>('');
   const [stopPrice, setStopPrice] = useState<string>('');
   const [trailPct, setTrailPct] = useState<number | string>(2);
@@ -84,6 +86,11 @@ export function TradeTicket({
     setMode(
       initialSide === 'short' || initialSide === 'cover' ? 'short' : 'long',
     );
+    // Reset $-Total popover state every modal open per spec (no persistence).
+    if (open) {
+      setBudget('30000');
+      setBudgetOpen(false);
+    }
   }, [initialSide, open]);
 
   const sides: { v: OrderSide; lbl: string }[] =
@@ -293,6 +300,17 @@ export function TradeTicket({
             step="1"
             value={qty}
             onChange={(e) => setQty(e.target.value)}
+          />
+          <QuickFillChips
+            side={side}
+            refPrice={refPrice}
+            positionLong={positionLong}
+            positionShort={positionShort}
+            budgetOpen={budgetOpen}
+            setBudgetOpen={setBudgetOpen}
+            budget={budget}
+            setBudget={setBudget}
+            setQty={setQty}
           />
         </div>
         <div className="field">
@@ -534,5 +552,145 @@ export function TradeTicket({
         {type !== 'market' ? `· ${typeLabel}` : ''}
       </button>
     </Modal>
+  );
+}
+
+interface QuickFillChipsProps {
+  side: OrderSide;
+  refPrice: number;
+  positionLong: Portfolio['positions'][number] | undefined;
+  positionShort: Portfolio['positions'][number] | undefined;
+  budgetOpen: boolean;
+  setBudgetOpen: (v: boolean) => void;
+  budget: string;
+  setBudget: (v: string) => void;
+  setQty: (v: number) => void;
+}
+
+function QuickFillChips({
+  side,
+  refPrice,
+  positionLong,
+  positionShort,
+  budgetOpen,
+  setBudgetOpen,
+  budget,
+  setBudget,
+  setQty,
+}: QuickFillChipsProps) {
+  // For sell/cover: show closing-position shortcuts when there's a matching
+  // position. We pick the position based on side rather than mode to avoid
+  // surprises when the user changes mode after opening from a position card.
+  const closingPos =
+    side === 'sell'
+      ? positionLong
+      : side === 'cover'
+        ? positionShort
+        : undefined;
+  // For buy: cash budget. For cover: budget makes less sense (closing a short
+  // is qty-driven), so we hide it on cover. Spec said "buy" — keep it that way.
+  const showBudget = side === 'buy' && refPrice > 0;
+
+  // Compute share count from budget. Always round up: int(b/p) + 1 unless
+  // b/p is a whole number (then exactly b/p). Math.ceil handles both.
+  const budgetNum = Number(budget);
+  const sharesFromBudget =
+    Number.isFinite(budgetNum) && budgetNum > 0 && refPrice > 0
+      ? Math.ceil(budgetNum / refPrice)
+      : 0;
+  const projectedCost = sharesFromBudget * refPrice;
+
+  const showCloseChips = closingPos && closingPos.qty > 0;
+
+  if (!showCloseChips && !showBudget) return null;
+
+  return (
+    <div className="qf-row">
+      {showCloseChips && closingPos && (
+        <>
+          <button
+            type="button"
+            className="qf-chip"
+            onClick={() => setQty(closingPos.qty)}
+            title={`Set quantity to your full ${closingPos.side} position`}
+          >
+            {side === 'sell' ? 'Sell all' : 'Cover all'} ({closingPos.qty})
+          </button>
+          {closingPos.qty >= 2 && (
+            <button
+              type="button"
+              className="qf-chip qf-chip-secondary"
+              onClick={() =>
+                setQty(Math.max(1, Math.floor(closingPos.qty / 2)))
+              }
+              title="Half of your position"
+            >
+              ½
+            </button>
+          )}
+          {closingPos.qty >= 4 && (
+            <button
+              type="button"
+              className="qf-chip qf-chip-secondary"
+              onClick={() =>
+                setQty(Math.max(1, Math.floor(closingPos.qty / 4)))
+              }
+              title="Quarter of your position"
+            >
+              ¼
+            </button>
+          )}
+        </>
+      )}
+
+      {showBudget && (
+        <div className="qf-popover">
+          <button
+            type="button"
+            className="qf-chip"
+            onClick={() => setBudgetOpen(!budgetOpen)}
+            title="Buy by total dollar amount"
+          >
+            $ Total {budgetOpen ? '▴' : '▾'}
+          </button>
+          {budgetOpen && (
+            <div className="qf-popover-content">
+              <div className="qf-pop-label">Spend approximately</div>
+              <div className="qf-pop-input-wrap">
+                <span className="prefix">$</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="100"
+                  value={budget}
+                  onChange={(e) => setBudget(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              <div className="qf-pop-hint">
+                {sharesFromBudget > 0
+                  ? `${sharesFromBudget} × $${refPrice.toFixed(2)} ≈ $${projectedCost.toFixed(2)}`
+                  : 'Enter a positive amount.'}
+              </div>
+              <button
+                type="button"
+                className="qf-pop-apply"
+                disabled={sharesFromBudget <= 0}
+                onClick={() => {
+                  if (sharesFromBudget > 0) {
+                    setQty(sharesFromBudget);
+                    setBudgetOpen(false);
+                  }
+                }}
+              >
+                {sharesFromBudget > 0
+                  ? `Apply → ${sharesFromBudget} share${sharesFromBudget === 1 ? '' : 's'}`
+                  : 'Apply'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

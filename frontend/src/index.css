@@ -1076,3 +1076,108 @@ textarea:focus {
   }
   .orders-shelf-label { grid-column: 1 / -1; }
 }
+
+/* TradeTicket quick-fill chips */
+.qf-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.qf-chip {
+  padding: 3px 10px;
+  font-size: 11.5px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  cursor: pointer;
+  color: var(--accent);
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  line-height: 1.4;
+  font-family: inherit;
+}
+.qf-chip:hover {
+  background: rgba(79, 70, 229, 0.08);
+}
+.qf-chip-secondary {
+  color: var(--text-muted);
+}
+.qf-chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.qf-popover {
+  position: relative;
+  display: inline-block;
+}
+.qf-popover-content {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 6px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+  box-shadow: var(--shadow);
+  width: 220px;
+  z-index: 10;
+}
+.qf-pop-label {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.qf-pop-input-wrap {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  font-family: 'JetBrains Mono', monospace;
+  background: var(--bg);
+}
+.qf-pop-input-wrap .prefix {
+  color: var(--text-muted);
+  margin-right: 4px;
+}
+.qf-pop-input-wrap input {
+  border: none;
+  outline: none;
+  flex: 1;
+  font: inherit;
+  padding: 2px 0;
+  background: transparent;
+  color: var(--text);
+  width: 100%;
+  min-width: 0;
+}
+.qf-pop-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+.qf-pop-apply {
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  cursor: pointer;
+  width: 100%;
+  font-weight: 500;
+}
+.qf-pop-apply:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
