@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Empty } from '../components/Empty';
 import { ORDER_TYPES } from '../components/TradeTicket';
 import { fmtLocalTime, fmtMoney, fmtPct } from '../lib/format';
+import { replayFifo } from '../lib/pnl';
 import type {
   Market,
   Order,
@@ -74,34 +75,6 @@ const triggerCell = (o: Order): string => {
   return 'Market';
 };
 
-// Realized P&L for a closing fill (sell or cover). Approach A from the
-// design: cost basis = the matching position's current avgPrice. Only
-// returns a value when:
-//   • side is 'sell' (closing long) or 'cover' (closing short)
-//   • fillPrice is present
-//   • a matching position is still on the books at read time
-// If the user fully closed the position, the position row is gone and we
-// have no cost basis to report → returns null and the cell renders "—".
-function realizedPnL(
-  o: Order,
-  portfolio: Portfolio,
-): { abs: number; pct: number } | null {
-  if (o.side !== 'sell' && o.side !== 'cover') return null;
-  if (o.fillPrice == null) return null;
-  const wantSide = o.side === 'sell' ? 'long' : 'short';
-  const pos = portfolio.positions.find(
-    (p) => p.ticker === o.ticker && p.side === wantSide,
-  );
-  if (!pos) return null;
-  const abs =
-    o.side === 'sell'
-      ? (o.fillPrice - pos.avgPrice) * o.qty
-      : (pos.avgPrice - o.fillPrice) * o.qty;
-  const cost = pos.avgPrice * o.qty;
-  const pct = cost > 0 ? (abs / cost) * 100 : 0;
-  return { abs, pct };
-}
-
 export function OrdersPage({
   portfolio,
   cancelOrder,
@@ -129,6 +102,14 @@ export function OrdersPage({
   const cancelled = useMemo(
     () => portfolio.history.filter((o) => o.status === 'cancelled'),
     [portfolio.history],
+  );
+
+  // FIFO replay over the entire filled history. Recomputes only when
+  // history or current positions change. Result is keyed by order id, so
+  // per-row lookup in the table is O(1).
+  const fifo = useMemo(
+    () => replayFifo(portfolio.history, portfolio.positions),
+    [portfolio.history, portfolio.positions],
   );
 
   // Distinct symbols across all order buckets — feeds the <datalist>.
@@ -362,7 +343,16 @@ export function OrdersPage({
                     {o.fillPrice ? `$${o.fillPrice.toFixed(2)}` : '—'}
                   </td>
                   {tab === 'filled' && (() => {
-                    const pnl = realizedPnL(o, portfolio);
+                    // Buy/short rows open positions, no realized P&L.
+                    // Sell/cover rows always have a P&L thanks to FIFO + fallback.
+                    if (o.side !== 'sell' && o.side !== 'cover') {
+                      return (
+                        <td className="num" style={{ color: 'var(--text-muted)' }}>
+                          —
+                        </td>
+                      );
+                    }
+                    const pnl = fifo.pnlByOrderId.get(o.id);
                     if (!pnl) {
                       return (
                         <td className="num" style={{ color: 'var(--text-muted)' }}>

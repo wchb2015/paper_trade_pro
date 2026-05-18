@@ -40,7 +40,12 @@ import { getPool, withTransaction } from '../db';
 //   status IN ('filled','cancelled'); the GET returns them as `history`.
 // -----------------------------------------------------------------------------
 
-const HISTORY_LIMIT = 200;
+// Filled/cancelled orders returned from /api/portfolio. Bumped from 200
+// because the Orders page now does FIFO P&L reconstruction over history,
+// so cost-basis lots must outlive the original buy. 1000 covers a heavy
+// paper-trading user (~5 trades/day for 7 months) and keeps the wire
+// payload under ~40 KB gzipped at saturation.
+const HISTORY_LIMIT = 1000;
 
 // ---- row → domain conversions ----------------------------------------------
 

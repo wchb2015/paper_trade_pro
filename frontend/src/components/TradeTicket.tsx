@@ -9,6 +9,8 @@ import type {
 } from '../lib/types';
 import { askOrPrice, bidOrPrice } from '../lib/quote';
 import type { PlaceOrderInput } from '../hooks/usePortfolio';
+import { replayFifo, type Lot } from '../lib/pnl';
+import { fmtMoney, fmtPct } from '../lib/format';
 
 export const ORDER_TYPES: { value: OrderType; label: string }[] = [
   { value: 'market', label: 'Market' },
@@ -55,6 +57,10 @@ export function TradeTicket({
   const [mode, setMode] = useState<Mode>(
     initialSide === 'short' || initialSide === 'cover' ? 'short' : 'long',
   );
+  // Lot picker — Set<openOrderId>. When non-empty, qty is derived from the
+  // sum of selected lots and the manual Quantity input is disabled.
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [selectedLots, setSelectedLots] = useState<Set<string>>(new Set());
 
   const m = market[ticker];
   const refPrice = m?.price ?? 0;
@@ -90,6 +96,8 @@ export function TradeTicket({
     if (open) {
       setBudget('30000');
       setBudgetOpen(false);
+      setPickerOpen(false);
+      setSelectedLots(new Set());
     }
   }, [initialSide, open]);
 
@@ -119,6 +127,41 @@ export function TradeTicket({
     (p) => p.ticker === ticker && p.side === 'short',
   );
 
+  // Open lots for the active ticker, derived from FIFO replay over the
+  // entire filled history. Drives the "Advanced: pick lots" picker.
+  const tickerLots = useMemo(() => {
+    const fifo = replayFifo(portfolio.history, portfolio.positions);
+    const q = fifo.openLots.get(ticker);
+    if (!q) return { long: [] as Lot[], short: [] as Lot[] };
+    return {
+      long: q.long.filter((l) => l.qty > 0),
+      short: q.short.filter((l) => l.qty > 0),
+    };
+  }, [portfolio.history, portfolio.positions, ticker]);
+
+  // Which lot list is relevant for the current side. Picker is hidden
+  // unless we have ≥2 lots and the user is closing (sell or cover) and
+  // type is not conditional (multi-lot conditional orders are out of scope).
+  const closingLots: Lot[] =
+    side === 'sell'
+      ? tickerLots.long
+      : side === 'cover'
+        ? tickerLots.short
+        : [];
+  const showPicker =
+    (side === 'sell' || side === 'cover') &&
+    closingLots.length >= 2 &&
+    type !== 'conditional';
+
+  // When lot picker is in use, qty is derived. Otherwise read the manual input.
+  const selectedLotsList = closingLots.filter((l) =>
+    selectedLots.has(l.openOrderId),
+  );
+  const lotMode = pickerOpen && selectedLotsList.length > 0;
+  const effectiveQty = lotMode
+    ? selectedLotsList.reduce((sum, l) => sum + l.qty, 0)
+    : +qty;
+
   const estimate = useMemo(() => {
     // Fall back to last trade price when bid/ask isn't published — replay files
     // are trades-only, and the live WS handler currently emits null bid/ask too.
@@ -137,9 +180,9 @@ export function TradeTicket({
             : type === 'stop_limit'
               ? +limitPrice
               : refPrice;
-    const amount = (p || 0) * (+qty || 0);
+    const amount = (p || 0) * (effectiveQty || 0);
     return { price: p || 0, amount };
-  }, [type, side, qty, limitPrice, refPrice, m]);
+  }, [type, side, effectiveQty, limitPrice, refPrice, m]);
 
   const buyingPower = portfolio.cash;
   const affordable =
@@ -147,14 +190,16 @@ export function TradeTicket({
       ? estimate.amount <= buyingPower
       : true;
 
-  const submit = () => {
-    const numQty = +qty;
-    if (!numQty || numQty <= 0) return;
+  // Build the shared (non-qty) fields once; lot-mode and single-order paths
+  // both use them.
+  const buildOrderShape = (
+    qtyForOrder: number,
+  ): PlaceOrderInput => {
     const order: PlaceOrderInput = {
       ticker,
       side,
       type,
-      qty: numQty,
+      qty: qtyForOrder,
       tif,
     };
     if (type === 'limit' || type === 'stop_limit')
@@ -170,7 +215,25 @@ export function TradeTicket({
       };
       order.innerType = 'market';
     }
-    placeOrder(order);
+    return order;
+  };
+
+  const submit = () => {
+    if (lotMode) {
+      // Place one order per selected lot. They all use the same fill price
+      // (single tick) so total proceeds match a combined sell; the only
+      // difference is each lot becomes its own row in Orders > Filled and
+      // its P&L can be matched 1:1 to the closing order id.
+      for (const lot of selectedLotsList) {
+        if (lot.qty <= 0) continue;
+        placeOrder(buildOrderShape(lot.qty));
+      }
+      onClose();
+      return;
+    }
+    const numQty = +qty;
+    if (!numQty || numQty <= 0) return;
+    placeOrder(buildOrderShape(numQty));
     onClose();
   };
 
@@ -292,14 +355,23 @@ export function TradeTicket({
         }}
       >
         <div className="field">
-          <label className="label">Quantity</label>
+          <label className="label">
+            Quantity
+            {lotMode && (
+              <span style={{ fontSize: 10.5, color: 'var(--text-muted)', textTransform: 'none', letterSpacing: 0 }}>
+                {selectedLotsList.length} lot{selectedLotsList.length === 1 ? '' : 's'} → {effectiveQty}
+              </span>
+            )}
+          </label>
           <input
             className="input mono"
             type="number"
             min="1"
             step="1"
-            value={qty}
+            value={lotMode ? effectiveQty : qty}
             onChange={(e) => setQty(e.target.value)}
+            disabled={lotMode}
+            title={lotMode ? 'Quantity comes from selected lots; uncheck them to edit manually.' : undefined}
           />
           <QuickFillChips
             side={side}
@@ -466,6 +538,88 @@ export function TradeTicket({
         </div>
       )}
 
+      {showPicker && (
+        <div className="lot-picker">
+          <button
+            type="button"
+            className="lot-picker-toggle"
+            onClick={() => setPickerOpen((v) => !v)}
+          >
+            <span>Advanced: pick lots ({closingLots.length} open)</span>
+            <span style={{ marginLeft: 'auto', fontSize: 11 }}>
+              {pickerOpen ? '▴' : '▾'}
+            </span>
+          </button>
+          {pickerOpen && (
+            <div className="lot-picker-list">
+              {closingLots.map((lot) => {
+                // P&L if we sold this whole lot at the current ref price.
+                const livePerShare =
+                  side === 'sell'
+                    ? refPrice - lot.costPerShare
+                    : lot.costPerShare - refPrice;
+                const liveAbs = livePerShare * lot.qty;
+                const liveCost = lot.costPerShare * lot.qty;
+                const livePct = liveCost > 0 ? (liveAbs / liveCost) * 100 : 0;
+                const checked = selectedLots.has(lot.openOrderId);
+                const ageDays = Math.max(
+                  0,
+                  Math.floor((Date.now() - lot.openedAt) / 86_400_000),
+                );
+                const ageLabel =
+                  ageDays === 0
+                    ? 'today'
+                    : ageDays === 1
+                      ? '1d ago'
+                      : `${ageDays}d ago`;
+                const pnlColor =
+                  liveAbs > 0
+                    ? 'var(--up)'
+                    : liveAbs < 0
+                      ? 'var(--down)'
+                      : 'var(--text-muted)';
+                return (
+                  <label key={lot.openOrderId} className="lot-row">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => {
+                        setSelectedLots((prev) => {
+                          const next = new Set(prev);
+                          if (e.target.checked) next.add(lot.openOrderId);
+                          else next.delete(lot.openOrderId);
+                          return next;
+                        });
+                      }}
+                    />
+                    <span className="mono tnum">{lot.qty}</span>
+                    <span className="lot-row-meta">
+                      @ ${lot.costPerShare.toFixed(2)} · {ageLabel}
+                    </span>
+                    <span
+                      className="mono tnum lot-row-pnl"
+                      style={{ color: pnlColor }}
+                    >
+                      {fmtMoney(liveAbs, { signed: true })}{' '}
+                      <span style={{ fontSize: 10.5 }}>{fmtPct(livePct)}</span>
+                    </span>
+                  </label>
+                );
+              })}
+              {selectedLotsList.length > 0 && (
+                <div className="lot-picker-summary">
+                  Selected: <b>{selectedLotsList.length}</b> lot
+                  {selectedLotsList.length === 1 ? '' : 's'}, total{' '}
+                  <b>{effectiveQty}</b> share
+                  {effectiveQty === 1 ? '' : 's'} → {selectedLotsList.length}{' '}
+                  separate order{selectedLotsList.length === 1 ? '' : 's'}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       <div
         style={{
           padding: '14px 14px',
@@ -545,11 +699,13 @@ export function TradeTicket({
       <button
         className={`btn ${sideColor}`}
         style={{ width: '100%', padding: '12px', fontSize: 14, fontWeight: 600 }}
-        disabled={!affordable || !qty || +qty <= 0}
+        disabled={!affordable || effectiveQty <= 0}
         onClick={submit}
       >
-        {side.toUpperCase()} {qty} {ticker}{' '}
-        {type !== 'market' ? `· ${typeLabel}` : ''}
+        {lotMode && selectedLotsList.length >= 2
+          ? `${side.toUpperCase()} ${selectedLotsList.length} LOTS · ${effectiveQty} ${ticker}`
+          : `${side.toUpperCase()} ${effectiveQty || qty} ${ticker}`}
+        {type !== 'market' ? ` · ${typeLabel}` : ''}
       </button>
     </Modal>
   );
