@@ -76,6 +76,7 @@ export function PageRouter(props: PageRouterProps) {
           onNavigate={onNavigate}
           onAdd={onAddStock}
           setTradeCtx={setTradeCtx}
+          setAlertCtx={setAlertCtx}
         />
       );
     case "trade":

@@ -6,6 +6,7 @@ import { fmtPct } from '../lib/format';
 import { dayChange, dayChangePct } from '../lib/quote';
 import { useBars } from '../hooks/useBars';
 import type {
+  AlertCtx,
   Market,
   PageKey,
   Portfolio,
@@ -21,6 +22,7 @@ interface WatchlistPageProps {
   onNavigate: (page: PageKey, ticker?: string) => void;
   onAdd: () => void;
   setTradeCtx: (ctx: TradeCtx | null) => void;
+  setAlertCtx: (ctx: AlertCtx | null) => void;
 }
 
 export function WatchlistPage({
@@ -31,6 +33,7 @@ export function WatchlistPage({
   onNavigate,
   onAdd,
   setTradeCtx,
+  setAlertCtx,
 }: WatchlistPageProps) {
   const { watchlist } = portfolio;
   // 1Min intraday bars for the sparkline column. Refreshed every minute by
@@ -245,6 +248,12 @@ export function WatchlistPage({
                   onClick={() => setTradeCtx({ ticker, side: 'buy' })}
                 >
                   Trade
+                </button>
+                <button
+                  className="btn sm"
+                  onClick={() => setAlertCtx({ ticker })}
+                >
+                  Alert
                 </button>
                 <button
                   className="btn sm ghost icon-only"
