@@ -18,7 +18,7 @@ import type { UsePortfolioResult } from "../hooks/usePortfolio";
 
 interface PageRouterProps {
   page: PageKey;
-  detailTicker: string;
+  activeTradeTicker: string;
   market: Market;
   unavailable: Record<string, UnavailableReason>;
   portfolio: Portfolio;
@@ -38,7 +38,7 @@ interface PageRouterProps {
 export function PageRouter(props: PageRouterProps) {
   const {
     page,
-    detailTicker,
+    activeTradeTicker,
     market,
     unavailable,
     portfolio,
@@ -56,7 +56,7 @@ export function PageRouter(props: PageRouterProps) {
   } = props;
 
   switch (page) {
-    case "dashboard":
+    case "portfolio":
       return (
         <DashboardPage
           market={market}
@@ -78,10 +78,10 @@ export function PageRouter(props: PageRouterProps) {
           setTradeCtx={setTradeCtx}
         />
       );
-    case "detail":
+    case "trade":
       return (
         <DetailPage
-          ticker={detailTicker}
+          ticker={activeTradeTicker}
           market={market}
           portfolio={portfolio}
           toggleWatch={toggleWatch}
@@ -115,7 +115,7 @@ export function PageRouter(props: PageRouterProps) {
           portfolio={portfolio}
           toggleAlert={toggleAlert}
           removeAlert={removeAlert}
-          onAdd={() => setAlertCtx({ ticker: detailTicker || "AAPL" })}
+          onAdd={() => setAlertCtx({ ticker: activeTradeTicker || "AAPL" })}
         />
       );
     case "account":

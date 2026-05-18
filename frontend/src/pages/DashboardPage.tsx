@@ -194,7 +194,7 @@ export function DashboardPage({
             {topMovers.map((t) => (
               <div
                 key={t.ticker}
-                onClick={() => onNavigate('detail', t.ticker)}
+                onClick={() => onNavigate('trade', t.ticker)}
                 style={{
                   display: 'grid',
                   gridTemplateColumns: '1fr auto auto',

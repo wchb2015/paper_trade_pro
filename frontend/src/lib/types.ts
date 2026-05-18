@@ -62,9 +62,9 @@ export interface Valuation {
 }
 
 export type PageKey =
-  | 'dashboard'
+  | 'portfolio'
   | 'watchlist'
-  | 'detail'
+  | 'trade'
   | 'positions'
   | 'orders'
   | 'alerts'

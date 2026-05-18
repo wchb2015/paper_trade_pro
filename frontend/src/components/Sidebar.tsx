@@ -24,7 +24,7 @@ export function Sidebar({
     icon: IconName;
     badge?: number | null;
   }[] = [
-    { id: "dashboard", label: "Dashboard", icon: "dashboard" },
+    { id: "portfolio", label: "Portfolio", icon: "dashboard" },
     {
       id: "watchlist",
       label: "Watchlist",

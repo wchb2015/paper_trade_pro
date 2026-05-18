@@ -28,9 +28,9 @@ const TWEAK_DEFAULTS: Tweaks = {
 
 export default function App() {
   const [theme, setTheme] = usePersistedState<Theme>("ptp_theme", "light");
-  const [page, setPage] = usePersistedState<PageKey>("ptp_page", "dashboard");
-  const [detailTicker, setDetailTicker] = usePersistedState<string>(
-    "ptp_detail",
+  const [page, setPage] = usePersistedState<PageKey>("ptp_page_v2", "portfolio");
+  const [activeTradeTicker, setActiveTradeTicker] = usePersistedState<string>(
+    "ptp_trade_ticker",
     "AAPL",
   );
   const [tradeCtx, setTradeCtx] = useState<TradeCtx | null>(null);
@@ -68,7 +68,7 @@ export default function App() {
     portfolio,
     portfolioLoaded,
     page,
-    detailTicker,
+    activeTradeTicker,
     tradeCtx,
     alertCtx,
   });
@@ -95,7 +95,7 @@ export default function App() {
   useThemeStyles(theme, tweaks);
 
   const onNavigate = (p: PageKey, ticker?: string) => {
-    if (ticker) setDetailTicker(ticker);
+    if (ticker) setActiveTradeTicker(ticker);
     setPage(p);
   };
 
@@ -146,7 +146,7 @@ export default function App() {
       <main className="main">
         <PageRouter
           page={page}
-          detailTicker={detailTicker}
+          activeTradeTicker={activeTradeTicker}
           market={market}
           unavailable={unavailable}
           portfolio={portfolio}

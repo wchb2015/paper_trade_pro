@@ -14,7 +14,7 @@ export function useInterestingSymbols(args: {
   portfolio: Portfolio;
   portfolioLoaded: boolean;
   page: PageKey;
-  detailTicker: string;
+  activeTradeTicker: string;
   tradeCtx: TradeCtx | null;
   alertCtx: AlertCtx | null;
 }): string[] {
@@ -22,7 +22,7 @@ export function useInterestingSymbols(args: {
     portfolio,
     portfolioLoaded,
     page,
-    detailTicker,
+    activeTradeTicker,
     tradeCtx,
     alertCtx,
   } = args;
@@ -34,7 +34,7 @@ export function useInterestingSymbols(args: {
     portfolio.positions.forEach((p) => set.add(p.ticker));
     portfolio.orders.forEach((o) => set.add(o.ticker));
     portfolio.alerts.forEach((a) => set.add(a.ticker));
-    if (page === "detail" && detailTicker) set.add(detailTicker);
+    if (page === "trade" && activeTradeTicker) set.add(activeTradeTicker);
     if (tradeCtx?.ticker) set.add(tradeCtx.ticker);
     if (alertCtx?.ticker) set.add(alertCtx.ticker);
     return Array.from(set).map((s) => s.toUpperCase());
@@ -45,7 +45,7 @@ export function useInterestingSymbols(args: {
     portfolio.orders,
     portfolio.alerts,
     page,
-    detailTicker,
+    activeTradeTicker,
     tradeCtx?.ticker,
     alertCtx?.ticker,
   ]);

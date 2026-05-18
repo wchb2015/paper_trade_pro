@@ -172,7 +172,7 @@ export function WatchlistPage({
                 gap: 8,
                 cursor: 'pointer',
               }}
-              onClick={() => onNavigate('detail', ticker)}
+              onClick={() => onNavigate('trade', ticker)}
               onMouseEnter={(e) =>
                 (e.currentTarget.style.background = 'var(--bg-muted)')
               }
