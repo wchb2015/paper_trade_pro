@@ -82,6 +82,7 @@ export default function App() {
     error,
     replayClock,
     replayDate,
+    liveFeed,
   } = useMarket(interestingSymbols);
   const replaySimMs = useReplayClock(replayClock);
 
@@ -130,6 +131,7 @@ export default function App() {
         replayDate={replayDate}
         replayClock={replayClock}
         replaySimMs={replaySimMs}
+        liveFeed={liveFeed}
       />
 
       <Sidebar
@@ -158,6 +160,7 @@ export default function App() {
           setTradeCtx={setTradeCtx}
           setAlertCtx={setAlertCtx}
           onAddStock={() => setAddOpen(true)}
+          liveFeed={liveFeed}
         />
       </main>
 

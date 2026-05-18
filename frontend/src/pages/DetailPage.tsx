@@ -1,11 +1,13 @@
 import { useState, type ReactNode } from 'react';
+import { toast } from 'react-hot-toast';
 import { Icon } from '../components/Icon';
 import { PriceChart } from '../components/PriceChart';
 import { Empty } from '../components/Empty';
 import { fmtMoney, fmtPct } from '../lib/format';
 import { dayChange, dayChangePct, money } from '../lib/quote';
 import { useBars } from '../hooks/useBars';
-import type { BarTimeframe } from '../../../shared/src';
+import { priceClient } from '../lib/priceClient';
+import type { AlpacaFeed, BarTimeframe } from '../../../shared/src';
 import type {
   AlertCtx,
   Market,
@@ -22,6 +24,8 @@ interface DetailPageProps {
   setTradeCtx: (ctx: TradeCtx | null) => void;
   setAlertCtx: (ctx: AlertCtx | null) => void;
   onNavigate: (page: PageKey, ticker?: string) => void;
+  /** Currently active live WS feed reported by the server. */
+  liveFeed: AlpacaFeed | null;
 }
 
 type RangeKey = '1D' | '1W' | '1M' | '3M';
@@ -48,15 +52,79 @@ export function DetailPage({
   setTradeCtx,
   setAlertCtx,
   onNavigate,
+  liveFeed,
 }: DetailPageProps) {
   const m = market[ticker];
   const [range, setRange] = useState<RangeKey>('1M');
+  // 1D extended-hours mode. 'rth' = filter to 09:30–16:00 ET (default);
+  // 'iex' = full IEX-feed payload, ~08:00–17:00 ET; 'sip' = paid SIP feed,
+  // full 04:00–20:00 ET. Picking 'iex' or 'sip' also POSTs /api/live-feed
+  // so the live WS tick stream stays coherent with the bars on screen.
+  const [extMode, setExtMode] = useState<'rth' | 'iex' | 'sip'>('rth');
+  // Pending while a feed-switch network request is in flight. Disables the
+  // segmented control so users can't queue overlapping switches that race.
+  const [feedSwitching, setFeedSwitching] = useState(false);
+
+  const onPickExtMode = async (next: 'rth' | 'iex' | 'sip') => {
+    if (next === 'rth') {
+      setExtMode('rth');
+      return;
+    }
+    setFeedSwitching(true);
+    setExtMode(next);
+    try {
+      const result = await priceClient.setLiveFeed(next);
+      if (result.fellBack) {
+        toast(
+          `Live feed: ${next.toUpperCase()} unavailable on this account` +
+            (result.reason ? ` (${result.reason})` : '') +
+            ` — using ${result.feed.toUpperCase()}`,
+          { icon: 'ℹ️', duration: 6000 },
+        );
+        // Snap the segmented control to whatever feed the server actually
+        // landed on so the UI doesn't lie. Historical bars on screen will
+        // re-fetch on the next 60s tick (or right now via the dep change).
+        setExtMode(result.feed);
+      }
+    } catch (err) {
+      // Network/5xx — api() already toasted with a ref id. Revert the UI
+      // optimism so the user can retry; preserve the prior mode by reading
+      // the actual server feed.
+      console.error('ERROR setLiveFeed failed', err);
+      setExtMode(liveFeed ?? 'rth');
+    } finally {
+      setFeedSwitching(false);
+    }
+  };
   const cfg = rangeConfig[range];
+  // Only pass `feed` to the backend when the user has explicitly chosen one.
+  // 'rth' uses the server's default feed (env-configured) and we filter to
+  // regular trading hours client-side.
+  const requestedFeed: AlpacaFeed | undefined =
+    range === '1D' && extMode !== 'rth' ? extMode : undefined;
   // Pull historical OHLC for the selected range. useBars polls every minute
-  // so the latest candle keeps refreshing; backend caches per (sym, tf, limit)
-  // so this is cheap. Single-symbol fetch -> result keyed by ticker.
-  const barsBySymbol = useBars([ticker], cfg.timeframe, cfg.limit, 60_000);
-  const bars = barsBySymbol[ticker] ?? [];
+  // so the latest candle keeps refreshing; backend caches per
+  // (sym, tf, limit, feed) so this is cheap. Single-symbol fetch -> result
+  // keyed by ticker.
+  const barsBySymbol = useBars(
+    [ticker],
+    cfg.timeframe,
+    cfg.limit,
+    60_000,
+    requestedFeed,
+  );
+  const rawBars = barsBySymbol[ticker] ?? [];
+  const bars =
+    range === '1D' && extMode === 'rth' ? filterRegularHours(rawBars) : rawBars;
+  // First-bar-open -> last-bar-close % across the visible window. Drives
+  // the colored chip next to the range buttons for 1W/1M/3M.
+  const rangeChange =
+    bars.length >= 2
+      ? {
+          abs: bars[bars.length - 1].c - bars[0].o,
+          pct: ((bars[bars.length - 1].c - bars[0].o) / bars[0].o) * 100,
+        }
+      : null;
 
   if (!m) {
     return (
@@ -190,17 +258,59 @@ export function DetailPage({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div className="card">
             <div className="card-header">
-              <h3 className="card-title">Price</h3>
-              <div className="segmented">
-                {(Object.keys(rangeConfig) as RangeKey[]).map((r) => (
-                  <button
-                    key={r}
-                    className={range === r ? 'active' : ''}
-                    onClick={() => setRange(r)}
+              <div
+                style={{ display: 'flex', alignItems: 'center', gap: 10 }}
+              >
+                <h3 className="card-title">Price</h3>
+                {range !== '1D' && rangeChange && (
+                  <span
+                    className={`chip ${rangeChange.pct >= 0 ? 'up' : 'down'}`}
+                    title={`${range} change: ${rangeChange.abs >= 0 ? '+' : ''}${rangeChange.abs.toFixed(2)}`}
                   >
-                    {r}
-                  </button>
-                ))}
+                    {fmtPct(rangeChange.pct)}
+                  </span>
+                )}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {range === '1D' && (
+                  <div
+                    className="segmented"
+                    title="Switch the data feed: RTH = regular hours only, IEX = free IEX-only feed (~8a-5p ET), SIP = paid consolidated tape (4a-8p ET)"
+                  >
+                    <button
+                      className={extMode === 'rth' ? 'active' : ''}
+                      onClick={() => void onPickExtMode('rth')}
+                      disabled={feedSwitching}
+                    >
+                      RTH
+                    </button>
+                    <button
+                      className={extMode === 'iex' ? 'active' : ''}
+                      onClick={() => void onPickExtMode('iex')}
+                      disabled={feedSwitching}
+                    >
+                      Ext (IEX)
+                    </button>
+                    <button
+                      className={extMode === 'sip' ? 'active' : ''}
+                      onClick={() => void onPickExtMode('sip')}
+                      disabled={feedSwitching}
+                    >
+                      Ext (SIP)
+                    </button>
+                  </div>
+                )}
+                <div className="segmented">
+                  {(Object.keys(rangeConfig) as RangeKey[]).map((r) => (
+                    <button
+                      key={r}
+                      className={range === r ? 'active' : ''}
+                      onClick={() => setRange(r)}
+                    >
+                      {r}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
             <div className="card-body">
@@ -527,4 +637,23 @@ function Row({ label, val }: { label: string; val: ReactNode }) {
       <span>{val}</span>
     </div>
   );
+}
+
+// Keep only bars whose timestamp falls inside US regular trading hours
+// (09:30–16:00 America/New_York). Uses Intl to read the ET wall-clock so
+// DST is handled automatically — no hard-coded UTC offset.
+function filterRegularHours<T extends { t: number }>(bars: T[]): T[] {
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  return bars.filter((b) => {
+    const parts = fmt.formatToParts(new Date(b.t));
+    const h = Number(parts.find((p) => p.type === 'hour')?.value ?? '0');
+    const min = Number(parts.find((p) => p.type === 'minute')?.value ?? '0');
+    const minutesET = h * 60 + min;
+    return minutesET >= 9 * 60 + 30 && minutesET < 16 * 60;
+  });
 }

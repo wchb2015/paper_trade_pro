@@ -4,6 +4,7 @@ import { getLogger } from "@chongbei/web-basics/server";
 const log = getLogger("services.PriceStreamHub");
 import {
   SOCKET_EVENTS,
+  type AlpacaFeed,
   type PriceTickPayload,
   type ProviderStatusPayload,
   type ServerToClientEvents,
@@ -84,6 +85,45 @@ export class PriceStreamHub {
     return this.status;
   }
 
+  /**
+   * Switch the live WS feed at runtime (Alpaca only). On success, returns
+   * `{ feed, fellBack: false }`. On failure (e.g. account not entitled to
+   * SIP), the underlying provider has already restored the prior feed, so
+   * we report `{ feed: <restored>, fellBack: true, reason }`.
+   *
+   * Always re-emits ProviderStatusPayload so all connected sockets pick
+   * up the new (or restored) feed indicator.
+   */
+  async setLiveFeed(
+    feed: AlpacaFeed,
+  ): Promise<{ feed: AlpacaFeed; fellBack: boolean; reason?: string }> {
+    if (!this.provider.setLiveFeed || !this.provider.getLiveFeed) {
+      throw new Error(
+        `provider '${this.provider.name}' does not support live feed switching`,
+      );
+    }
+    try {
+      await this.provider.setLiveFeed(feed);
+      // Force a status broadcast so the new feed reaches the UI even if
+      // Alpaca didn't already emit a 'connected' transition (e.g. it stayed
+      // connected on the same TCP).
+      this.broadcastStatus();
+      return { feed, fellBack: false };
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      log.error(
+        { err, requested: feed, operation: "PriceStreamHub.setLiveFeed" },
+        "ERROR setLiveFeed failed; provider has restored prior feed",
+      );
+      this.broadcastStatus();
+      return {
+        feed: this.provider.getLiveFeed(),
+        fellBack: true,
+        reason,
+      };
+    }
+  }
+
   // --------------------------------------------------------------------------
 
   private capSymbols(symbols: string[]): string[] {
@@ -146,16 +186,37 @@ export class PriceStreamHub {
         "upstream price provider connected",
       );
     }
+    this.status = this.buildStatusPayload(status, detail);
+    this.io.emit(SOCKET_EVENTS.PROVIDER_STATUS, this.status);
+  }
+
+  /**
+   * Re-emit the current status payload (no upstream transition required).
+   * Used after a runtime feed switch so the UI sees the new feed indicator
+   * even when the WS stayed nominally connected throughout.
+   */
+  private broadcastStatus(): void {
+    this.status = this.buildStatusPayload(
+      this.status.status,
+      this.status.message,
+    );
+    this.io.emit(SOCKET_EVENTS.PROVIDER_STATUS, this.status);
+  }
+
+  private buildStatusPayload(
+    status: ProviderStatusPayload["status"],
+    detail: string | undefined,
+  ): ProviderStatusPayload {
     const replaySpeed = this.provider.getReplaySpeed?.();
     const replayDate = this.provider.getReplayDate?.();
-    const next: ProviderStatusPayload = {
+    const feed = this.provider.getLiveFeed?.();
+    return {
       status,
       provider: this.provider.name,
       ...(detail !== undefined ? { message: detail } : {}),
       ...(replaySpeed !== undefined ? { replaySpeed } : {}),
       ...(replayDate !== undefined ? { replayDate } : {}),
+      ...(feed !== undefined ? { feed } : {}),
     };
-    this.status = next;
-    this.io.emit(SOCKET_EVENTS.PROVIDER_STATUS, next);
   }
 }

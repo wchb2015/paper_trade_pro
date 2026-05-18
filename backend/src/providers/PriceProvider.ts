@@ -1,4 +1,5 @@
 import type {
+  AlpacaFeed,
   AssetLookup,
   Bar,
   BarTimeframe,
@@ -41,8 +42,16 @@ export interface PriceProvider {
 
   /**
    * Fetch historical OHLC bars for a single symbol. Used for charts.
+   * `feed` lets the caller override the configured Alpaca feed for this
+   * one request (only honored by AlpacaProvider; ignored elsewhere) so the
+   * UI can flip iex↔sip per request without a server restart.
    */
-  fetchBars(symbol: string, timeframe: BarTimeframe, limit: number): Promise<Bar[]>;
+  fetchBars(
+    symbol: string,
+    timeframe: BarTimeframe,
+    limit: number,
+    opts?: { feed?: AlpacaFeed },
+  ): Promise<Bar[]>;
 
   /**
    * Start (or extend) a real-time stream for `symbols`. Idempotent — calling
@@ -90,4 +99,19 @@ export interface PriceProvider {
    * Returns undefined for live providers. Used to label the status pill.
    */
   getReplayDate?(): string;
+
+  /**
+   * Alpaca-only: the live WS feed currently in use ('iex' | 'sip'). Used by
+   * the hub to surface the feed in ProviderStatusPayload and by the live-feed
+   * route to report current state on read.
+   */
+  getLiveFeed?(): AlpacaFeed;
+
+  /**
+   * Alpaca-only: tear down the current WS, reopen against `feed`, and
+   * re-subscribe to the existing symbol set. Resolves once the new feed is
+   * authenticated; rejects if Alpaca rejects auth (e.g. account not entitled
+   * to SIP) — caller is expected to fall back. Idempotent on no-op.
+   */
+  setLiveFeed?(feed: AlpacaFeed): Promise<void>;
 }

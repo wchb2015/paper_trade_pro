@@ -503,6 +503,17 @@ textarea:focus {
 .input-affix {
   position: relative;
 }
+.input-affix .input {
+  padding-right: 44px;
+}
+.input-affix input[type='number']::-webkit-inner-spin-button,
+.input-affix input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.input-affix input[type='number'] {
+  -moz-appearance: textfield;
+}
 .input-affix .affix {
   position: absolute;
   right: 10px;

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal } from './Modal';
 import type {
   Market,
@@ -57,15 +57,25 @@ export function TradeTicket({
   const m = market[ticker];
   const refPrice = m?.price ?? 0;
 
+  // Seed price inputs only on the first tick where (open && m) becomes true
+  // for a given ticker. Subsequent market ticks must NOT overwrite what the
+  // user is typing.
+  const seededRef = useRef<{ open: boolean; ticker: string } | null>(null);
   useEffect(() => {
-    if (open && m) {
-      setLimitPrice(m.price.toFixed(2));
-      setStopPrice(
-        (m.price * (side === 'buy' ? 1.02 : 0.98)).toFixed(2),
-      );
-      setCondTicker(ticker);
-      setCondPrice(m.price.toFixed(2));
+    if (!open) {
+      seededRef.current = null;
+      return;
     }
+    if (!m) return;
+    const seeded = seededRef.current;
+    if (seeded && seeded.open && seeded.ticker === ticker) return;
+    setLimitPrice(m.price.toFixed(2));
+    setStopPrice(
+      (m.price * (side === 'buy' ? 1.02 : 0.98)).toFixed(2),
+    );
+    setCondTicker(ticker);
+    setCondPrice(m.price.toFixed(2));
+    seededRef.current = { open: true, ticker };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, ticker, m?.price]);
 

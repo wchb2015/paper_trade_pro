@@ -32,6 +32,7 @@ interface PageRouterProps {
   setTradeCtx: (ctx: TradeCtx | null) => void;
   setAlertCtx: (ctx: AlertCtx | null) => void;
   onAddStock: () => void;
+  liveFeed: "iex" | "sip" | null;
 }
 
 export function PageRouter(props: PageRouterProps) {
@@ -51,6 +52,7 @@ export function PageRouter(props: PageRouterProps) {
     setTradeCtx,
     setAlertCtx,
     onAddStock,
+    liveFeed,
   } = props;
 
   switch (page) {
@@ -86,6 +88,7 @@ export function PageRouter(props: PageRouterProps) {
           setTradeCtx={setTradeCtx}
           setAlertCtx={setAlertCtx}
           onNavigate={onNavigate}
+          liveFeed={liveFeed}
         />
       );
     case "positions":

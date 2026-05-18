@@ -47,6 +47,13 @@ export interface UseMarketResult {
   replayClock: ReplayClockAnchor | null;
   /** Replay-only: the trading date being replayed (YYYY-MM-DD, ET wall-clock). */
   replayDate: string | null;
+  /**
+   * Alpaca-only: the live WS feed currently in use ('iex' | 'sip'). Driven by
+   * the latest ProviderStatusPayload, so it reflects runtime feed switches
+   * AND any auto-fallback the server performed. Null under non-Alpaca
+   * providers or before the first status arrives.
+   */
+  liveFeed: "iex" | "sip" | null;
 }
 
 function quoteToSnapshot(
@@ -106,6 +113,7 @@ export function useMarket(symbols: string[]): UseMarketResult {
   const [error, setError] = useState<string | null>(null);
   const [replaySpeed, setReplaySpeed] = useState<number | null>(null);
   const [replayDate, setReplayDate] = useState<string | null>(null);
+  const [liveFeed, setLiveFeed] = useState<"iex" | "sip" | null>(null);
   const [replayClock, setReplayClock] = useState<ReplayClockAnchor | null>(
     null,
   );
@@ -167,6 +175,7 @@ export function useMarket(symbols: string[]): UseMarketResult {
           setReplayClock(null);
         }
         setReplayDate(status.replayDate ?? null);
+        setLiveFeed(status.feed ?? null);
       },
       onConnectionChange: (connected) => {
         setLiveConnected(connected);
@@ -304,5 +313,6 @@ export function useMarket(symbols: string[]): UseMarketResult {
     error,
     replayClock,
     replayDate,
+    liveFeed,
   };
 }

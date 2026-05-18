@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Bar, BarTimeframe } from "../../../shared/src";
+import type { AlpacaFeed, Bar, BarTimeframe } from "../../../shared/src";
 import { priceClient } from "../lib/priceClient";
 
 // -----------------------------------------------------------------------------
@@ -20,6 +20,7 @@ export function useBars(
   timeframe: BarTimeframe = "1Min",
   limit = 400,
   refreshMs = 60_000,
+  feed?: AlpacaFeed,
 ): Record<string, Bar[]> {
   const [bars, setBars] = useState<Record<string, Bar[]>>({});
 
@@ -40,7 +41,9 @@ export function useBars(
     const fetchAll = async () => {
       const next: Record<string, Bar[]> = {};
       const results = await Promise.allSettled(
-        list.map((sym) => priceClient.fetchBars(sym, timeframe, limit)),
+        list.map((sym) =>
+          priceClient.fetchBars(sym, timeframe, limit, feed ? { feed } : undefined),
+        ),
       );
       results.forEach((r, i) => {
         const sym = list[i];
@@ -80,7 +83,7 @@ export function useBars(
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [key, timeframe, limit, refreshMs]);
+  }, [key, timeframe, limit, refreshMs, feed]);
 
   return bars;
 }

@@ -191,6 +191,8 @@ export class ReplayProvider implements PriceProvider {
     symbol: string,
     timeframe: BarTimeframe,
     limit: number,
+    // Replay reads from local NDJSON; Alpaca feed selector is irrelevant.
+    _opts?: { feed?: 'iex' | 'sip' },
   ): Promise<Bar[]> {
     const sym = symbol.toUpperCase();
     const key = `${sym}::${timeframe}`;

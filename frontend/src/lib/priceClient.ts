@@ -2,10 +2,12 @@ import { io, type Socket } from "socket.io-client";
 import { api } from "@chongbei/web-basics/client";
 import { dump } from "./dump";
 import type {
+  AlpacaFeed,
   AssetLookupResponse,
   BarsResponse,
   BarTimeframe,
   ClientToServerEvents,
+  LiveFeedResponse,
   PriceTickPayload,
   ProviderStatusPayload,
   Quote,
@@ -58,13 +60,34 @@ export class PriceClient {
     symbol: string,
     timeframe: BarTimeframe,
     limit: number,
+    opts?: { feed?: AlpacaFeed },
   ): Promise<BarsResponse> {
     const q = new URLSearchParams({
       symbol: symbol.toUpperCase(),
       timeframe,
       limit: String(limit),
     });
+    if (opts?.feed) q.set("feed", opts.feed);
     return api<BarsResponse>(`${this.baseUrl}/api/bars?${q}`);
+  }
+
+  /**
+   * Switch the live WS feed at runtime (Alpaca only). The server tears down
+   * the current WS, reopens against `feed`, and re-subscribes. On failure
+   * (e.g. account not entitled to SIP for streaming), the response carries
+   * `fellBack: true` and `feed` is the *restored* prior feed — UI should
+   * surface a toast and reflect the actual active feed.
+   */
+  async setLiveFeed(feed: AlpacaFeed): Promise<LiveFeedResponse> {
+    return api<LiveFeedResponse>(`${this.baseUrl}/api/live-feed`, {
+      method: "POST",
+      body: JSON.stringify({ feed }),
+    });
+  }
+
+  /** Read the currently active live WS feed. */
+  async getLiveFeed(): Promise<LiveFeedResponse> {
+    return api<LiveFeedResponse>(`${this.baseUrl}/api/live-feed`);
   }
 
   /**

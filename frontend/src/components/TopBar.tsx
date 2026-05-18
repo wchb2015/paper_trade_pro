@@ -18,6 +18,7 @@ interface TopBarProps {
   replayDate: string | null;
   replayClock: ReplayClockAnchor | null;
   replaySimMs: number | null;
+  liveFeed: "iex" | "sip" | null;
 }
 
 // Single place to compute what the top-right status indicator should show.
@@ -27,6 +28,7 @@ function deriveStatusPill(
   providerStatus: "live" | "stale" | "unavailable",
   error: string | null,
   replayDate: string | null,
+  liveFeed: "iex" | "sip" | null,
 ) {
   if (!liveConnected) {
     return {
@@ -46,10 +48,13 @@ function deriveStatusPill(
     } as const;
   }
   if (providerStatus === "live") {
+    const feedSuffix = liveFeed ? ` · ${liveFeed.toUpperCase()}` : "";
     return {
-      label: `Live · ${provider || "provider"}`,
+      label: `Live · ${provider || "provider"}${feedSuffix}`,
       dot: "var(--up)",
-      title: `${provider} stream connected`,
+      title: liveFeed
+        ? `${provider} stream connected on ${liveFeed.toUpperCase()} feed`
+        : `${provider} stream connected`,
     } as const;
   }
   if (providerStatus === "stale") {
@@ -81,6 +86,7 @@ export function TopBar({
   replayDate,
   replayClock,
   replaySimMs,
+  liveFeed,
 }: TopBarProps) {
   const statusPill = deriveStatusPill(
     liveConnected,
@@ -88,6 +94,7 @@ export function TopBar({
     providerStatus,
     error,
     replayDate,
+    liveFeed,
   );
 
   return (

@@ -45,6 +45,16 @@ export interface Bar {
 export type BarTimeframe = '1Min' | '5Min' | '15Min' | '1Hour' | '1Day';
 
 /**
+ * Alpaca market-data feed selector. `iex` is the free single-exchange feed
+ * (IEX-only trades, ~08:00–17:00 ET coverage). `sip` is the paid consolidated
+ * SIP tape (full 04:00–20:00 ET extended-hours session, all exchanges).
+ *
+ * Threaded as an optional per-request override on `/api/bars` so the UI can
+ * switch feeds without restarting the server.
+ */
+export type AlpacaFeed = 'iex' | 'sip';
+
+/**
  * Why a particular symbol cannot be priced right now. Currently emitted
  * by the replay provider for symbols whose NDJSON file is missing for
  * the configured REPLAY_DATE. The discriminator lets us add new reasons
@@ -139,4 +149,22 @@ export interface ProviderStatusPayload {
    * which session they're watching. Absent under live providers.
    */
   replayDate?: string;
+  /**
+   * Alpaca-only: which market-data feed the live WS is currently using
+   * ('iex' free / 'sip' paid). Drives the feed indicator on the TopBar so
+   * the UI reflects the actual active feed even after a runtime switch
+   * (or an automatic fallback from SIP→IEX). Absent under non-Alpaca
+   * providers.
+   */
+  feed?: AlpacaFeed;
+}
+
+/**
+ * Response from POST /api/live-feed. `fellBack: true` means the requested
+ * feed could not be established and the server reverted to `feed`.
+ */
+export interface LiveFeedResponse {
+  feed: AlpacaFeed;
+  fellBack: boolean;
+  reason?: string;
 }

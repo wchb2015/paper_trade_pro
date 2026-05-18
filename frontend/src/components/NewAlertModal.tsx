@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Modal } from './Modal';
 import type { AlertCondition, Market } from '../lib/types';
 
@@ -30,8 +30,12 @@ export function NewAlertModal({
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
 
+  // Seed inputs only when the modal transitions from closed → open. The live
+  // `market` ref changes on every price tick; depending on it would clobber
+  // whatever the user is typing into the Trigger Price field.
+  const wasOpenRef = useRef(false);
   useEffect(() => {
-    if (open) {
+    if (open && !wasOpenRef.current) {
       const t = ticker || '';
       setSel(t);
       const m = t ? market[t] : undefined;
@@ -39,6 +43,7 @@ export function NewAlertModal({
       setNote('');
       setError(null);
     }
+    wasOpenRef.current = open;
   }, [open, ticker, market]);
 
   const m = sel ? market[sel] : undefined;

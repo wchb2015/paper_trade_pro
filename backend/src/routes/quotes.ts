@@ -3,11 +3,13 @@ import { getLogger } from "@chongbei/web-basics/server";
 
 const log = getLogger("routes.quotes");
 import type {
+  AlpacaFeed,
   AssetLookup,
   AssetLookupResponse,
   Bar,
   BarTimeframe,
   BarsResponse,
+  LiveFeedResponse,
   QuotesResponse,
   SubscriptionsResponse,
 } from "../../../shared/src";
@@ -54,6 +56,8 @@ const VALID_TIMEFRAMES: readonly BarTimeframe[] = [
   "1Hour",
   "1Day",
 ];
+
+const VALID_FEEDS: readonly AlpacaFeed[] = ["iex", "sip"];
 
 export function createQuotesRouter(deps: RouteDeps): Router {
   const router = Router();
@@ -113,6 +117,21 @@ export function createQuotesRouter(deps: RouteDeps): Router {
       const symbol = String(req.query.symbol ?? "").toUpperCase();
       const timeframe = String(req.query.timeframe ?? "1Day") as BarTimeframe;
       const limit = Math.min(Math.max(Number(req.query.limit ?? 90), 1), 1000);
+      // Optional per-request feed override. Validated; if the param is
+      // present-but-bad we 400 rather than silently fall back so the UI
+      // surface the mistake. When omitted, AlpacaProvider uses the env
+      // default — same as before.
+      const rawFeed = req.query.feed;
+      let feed: AlpacaFeed | undefined;
+      if (rawFeed != null && rawFeed !== "") {
+        const candidate = String(rawFeed).toLowerCase();
+        if (!(VALID_FEEDS as readonly string[]).includes(candidate)) {
+          return res.status(400).json({
+            error: `invalid feed; one of ${VALID_FEEDS.join(", ")}`,
+          });
+        }
+        feed = candidate as AlpacaFeed;
+      }
       if (!symbol) {
         return res.status(400).json({ error: "symbol query param required" });
       }
@@ -122,7 +141,9 @@ export function createQuotesRouter(deps: RouteDeps): Router {
         });
       }
 
-      const key = `${symbol}|${timeframe}|${limit}`;
+      // Cache key includes feed: SIP and IEX return materially different
+      // bars during extended hours, so they must not share an entry.
+      const key = `${symbol}|${timeframe}|${limit}|${feed ?? "default"}`;
       const now = Date.now();
       const hit = barsCache.get(key);
       if (hit && now - hit.cachedAt < deps.barsCacheTtlMs) {
@@ -135,7 +156,12 @@ export function createQuotesRouter(deps: RouteDeps): Router {
         return res.json(body);
       }
 
-      const bars = await deps.provider.fetchBars(symbol, timeframe, limit);
+      const bars = await deps.provider.fetchBars(
+        symbol,
+        timeframe,
+        limit,
+        feed ? { feed } : undefined,
+      );
       barsCache.set(key, { bars, cachedAt: now });
       const body: BarsResponse = {
         symbol,
@@ -230,6 +256,45 @@ export function createQuotesRouter(deps: RouteDeps): Router {
       subscribed: deps.hub.listSubscriptions(),
     };
     res.json(body);
+  });
+
+  router.post("/live-feed", async (req: Request, res: Response) => {
+    try {
+      const body = (req.body ?? {}) as { feed?: unknown };
+      const candidate = String(body.feed ?? "").toLowerCase();
+      if (!(VALID_FEEDS as readonly string[]).includes(candidate)) {
+        return res.status(400).json({
+          error: `body.feed required; one of ${VALID_FEEDS.join(", ")}`,
+        });
+      }
+      const result = await deps.hub.setLiveFeed(candidate as AlpacaFeed);
+      const payload: LiveFeedResponse = {
+        feed: result.feed,
+        fellBack: result.fellBack,
+        ...(result.reason !== undefined ? { reason: result.reason } : {}),
+      };
+      // 200 even on fallback — the request succeeded; the UI uses
+      // `fellBack` to surface a toast. A 5xx would imply the server
+      // itself failed, which it didn't.
+      return res.json(payload);
+    } catch (err) {
+      log.error(
+        { err, route: "POST /live-feed" },
+        "ERROR POST /live-feed failed",
+      );
+      return res.status(502).json({ error: (err as Error).message });
+    }
+  });
+
+  router.get("/live-feed", (_req: Request, res: Response) => {
+    const feed = deps.provider.getLiveFeed?.();
+    if (!feed) {
+      return res
+        .status(404)
+        .json({ error: "current provider does not expose a feed selector" });
+    }
+    const payload: LiveFeedResponse = { feed, fellBack: false };
+    return res.json(payload);
   });
 
   router.get("/health", (_req: Request, res: Response) => {
