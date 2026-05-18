@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Empty } from '../components/Empty';
 import { ORDER_TYPES } from '../components/TradeTicket';
-import { fmtLocalTime } from '../lib/format';
+import { fmtLocalTime, fmtMoney, fmtPct } from '../lib/format';
 import type {
   Market,
   Order,
@@ -73,6 +73,34 @@ const triggerCell = (o: Order): string => {
     return `${o.condTrigger.ticker} ${o.condTrigger.op} $${o.condTrigger.price.toFixed(2)}`;
   return 'Market';
 };
+
+// Realized P&L for a closing fill (sell or cover). Approach A from the
+// design: cost basis = the matching position's current avgPrice. Only
+// returns a value when:
+//   • side is 'sell' (closing long) or 'cover' (closing short)
+//   • fillPrice is present
+//   • a matching position is still on the books at read time
+// If the user fully closed the position, the position row is gone and we
+// have no cost basis to report → returns null and the cell renders "—".
+function realizedPnL(
+  o: Order,
+  portfolio: Portfolio,
+): { abs: number; pct: number } | null {
+  if (o.side !== 'sell' && o.side !== 'cover') return null;
+  if (o.fillPrice == null) return null;
+  const wantSide = o.side === 'sell' ? 'long' : 'short';
+  const pos = portfolio.positions.find(
+    (p) => p.ticker === o.ticker && p.side === wantSide,
+  );
+  if (!pos) return null;
+  const abs =
+    o.side === 'sell'
+      ? (o.fillPrice - pos.avgPrice) * o.qty
+      : (pos.avgPrice - o.fillPrice) * o.qty;
+  const cost = pos.avgPrice * o.qty;
+  const pct = cost > 0 ? (abs / cost) * 100 : 0;
+  return { abs, pct };
+}
 
 export function OrdersPage({
   portfolio,
@@ -297,6 +325,7 @@ export function OrdersPage({
                 <th className="num">Qty</th>
                 <th className="num">Trigger</th>
                 <th className="num">Fill</th>
+                {tab === 'filled' && <th className="num">P&L</th>}
                 {tab === 'working' && <th></th>}
               </tr>
             </thead>
@@ -332,6 +361,30 @@ export function OrdersPage({
                   <td className="num">
                     {o.fillPrice ? `$${o.fillPrice.toFixed(2)}` : '—'}
                   </td>
+                  {tab === 'filled' && (() => {
+                    const pnl = realizedPnL(o, portfolio);
+                    if (!pnl) {
+                      return (
+                        <td className="num" style={{ color: 'var(--text-muted)' }}>
+                          —
+                        </td>
+                      );
+                    }
+                    const color =
+                      pnl.abs > 0
+                        ? 'var(--up)'
+                        : pnl.abs < 0
+                          ? 'var(--down)'
+                          : 'var(--text)';
+                    return (
+                      <td className="num" style={{ color, fontWeight: 500 }}>
+                        {fmtMoney(pnl.abs, { signed: true })}
+                        <span style={{ marginLeft: 6, fontSize: 11.5 }}>
+                          {fmtPct(pnl.pct)}
+                        </span>
+                      </td>
+                    );
+                  })()}
                   {tab === 'working' && (
                     <td style={{ textAlign: 'right' }}>
                       <button
