@@ -1,7 +1,9 @@
+import { useEffect } from 'react';
 import { Icon } from '../components/Icon';
 import { Empty } from '../components/Empty';
 import { fmtPct, timeAgo } from '../lib/format';
-import type { Alert, Market, Portfolio } from '../lib/types';
+import { markViewedNow } from '../lib/alertsViewed';
+import type { Alert, Market, PageKey, Portfolio } from '../lib/types';
 
 interface AlertsPageProps {
   market: Market;
@@ -9,6 +11,7 @@ interface AlertsPageProps {
   toggleAlert: (id: string) => void;
   removeAlert: (id: string) => void;
   onAdd: () => void;
+  onNavigate: (page: PageKey, ticker?: string) => void;
 }
 
 export function AlertsPage({
@@ -17,7 +20,13 @@ export function AlertsPage({
   toggleAlert,
   removeAlert,
   onAdd,
+  onNavigate,
 }: AlertsPageProps) {
+  // Bump the "last viewed" timestamp so the sidebar's red dot clears.
+  // Idempotent — re-running just overwrites the timestamp with now().
+  useEffect(() => {
+    markViewedNow();
+  }, []);
   const { alerts } = portfolio;
   const active = alerts.filter((a) => !a.triggeredAt);
   const triggered = alerts.filter((a) => a.triggeredAt);
@@ -40,7 +49,13 @@ export function AlertsPage({
       >
         <div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <span className="ticker">{a.ticker}</span>
+            <span
+              className="ticker"
+              onClick={() => onNavigate('trade', a.ticker)}
+              style={{ cursor: 'pointer' }}
+            >
+              {a.ticker}
+            </span>
             <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>
               {a.condition === 'above' ? 'Price above' : 'Price below'}{' '}
               <span

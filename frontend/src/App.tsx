@@ -11,6 +11,7 @@ import { usePersistedState } from "./hooks/usePersistedState";
 import { useLiveValuation } from "./hooks/useLiveValuation";
 import { useInterestingSymbols } from "./hooks/useInterestingSymbols";
 import { useThemeStyles } from "./hooks/useThemeStyles";
+import { countUnreadTriggered } from "./lib/alertsViewed";
 import type {
   AlertCtx,
   Market,
@@ -102,6 +103,7 @@ export default function App() {
   const activeAlerts = portfolio.alerts.filter(
     (a) => a.active && !a.triggeredAt,
   ).length;
+  const unreadTriggered = countUnreadTriggered(portfolio.alerts);
 
   const effectiveValuation = useLiveValuation(market, portfolio, valuation);
 
@@ -136,6 +138,7 @@ export default function App() {
         onNavigate={onNavigate}
         portfolio={portfolio}
         activeAlerts={activeAlerts}
+        unreadTriggered={unreadTriggered}
         provider={provider}
       />
 

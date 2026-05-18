@@ -100,6 +100,7 @@ export function PageRouter(props: PageRouterProps) {
           toggleAlert={toggleAlert}
           removeAlert={removeAlert}
           onAdd={() => setAlertCtx({ ticker: activeTradeTicker || "AAPL" })}
+          onNavigate={onNavigate}
         />
       );
     case "account":

@@ -6,6 +6,7 @@ interface SidebarProps {
   onNavigate: (p: PageKey, ticker?: string) => void;
   portfolio: Portfolio;
   activeAlerts: number;
+  unreadTriggered: number;
   provider: string;
 }
 
@@ -14,6 +15,7 @@ export function Sidebar({
   onNavigate,
   portfolio,
   activeAlerts,
+  unreadTriggered,
   provider,
 }: SidebarProps) {
   const navItems: {
@@ -21,6 +23,7 @@ export function Sidebar({
     label: string;
     icon: IconName;
     badge?: number | null;
+    dot?: boolean;
   }[] = [
     { id: "portfolio", label: "Portfolio", icon: "dashboard" },
     {
@@ -35,6 +38,7 @@ export function Sidebar({
       label: "Alerts",
       icon: "alerts",
       badge: activeAlerts || null,
+      dot: unreadTriggered > 0,
     },
   ];
 
@@ -50,6 +54,19 @@ export function Sidebar({
           <Icon name={item.icon} className="nav-icon" size={16} />
           <span>{item.label}</span>
           {item.badge ? <span className="badge">{item.badge}</span> : null}
+          {item.dot ? (
+            <span
+              aria-label={`${unreadTriggered} unread triggered alerts`}
+              style={{
+                marginLeft: 6,
+                width: 8,
+                height: 8,
+                borderRadius: 999,
+                background: 'var(--down)',
+                display: 'inline-block',
+              }}
+            />
+          ) : null}
         </button>
       ))}
       <div className="nav-group-label">Settings</div>
