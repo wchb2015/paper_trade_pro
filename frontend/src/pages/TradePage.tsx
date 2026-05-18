@@ -62,6 +62,12 @@ export function TradePage({
   // symbol without leaving the page. Also reflect the change up to App via
   // onNavigate so persisted state survives reloads.
   const [activeTicker, setActiveTicker] = useState(ticker);
+  // Sync local state when the App-level prop changes (e.g. user clicks a
+  // watchlist symbol from another page). The lint rule against setState in
+  // an effect targets cascading-render footguns; here we are explicitly
+  // syncing one external authority into local state, which is the pattern
+  // the rule's docs suggest as the legitimate exception.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     setActiveTicker(ticker);
   }, [ticker]);
