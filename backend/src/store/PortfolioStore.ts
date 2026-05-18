@@ -20,6 +20,7 @@ import {
 } from '../../../shared/src';
 import { DEFAULT_WATCHLIST } from '../../../shared/src';
 import { getPool, withTransaction } from '../db';
+import type { MarketClock } from '../services/MarketClock';
 
 // -----------------------------------------------------------------------------
 // PortfolioStore — all Postgres reads/writes for a single user's portfolio.
@@ -215,10 +216,44 @@ function matchingPositionSide(side: OrderSide): PositionSide {
 export class PortfolioStore {
   private readonly pool: Pool;
   private readonly initialCash: number;
+  private readonly marketClock: MarketClock;
 
-  constructor(opts: { initialCash: number }) {
+  constructor(opts: { initialCash: number; marketClock: MarketClock }) {
     this.pool = getPool();
     this.initialCash = opts.initialCash;
+    this.marketClock = opts.marketClock;
+  }
+
+  /**
+   * Reject orders that should only fill during the regular session. We gate:
+   *   - placeOrder when type === 'market' (these fill in-line)
+   *   - fillOrder always (covers triggered limit/stop/trailing/conditional
+   *     conversions, which the client evaluator otherwise fires the moment
+   *     a stale price crosses the threshold)
+   *
+   * Limit/stop/trailing/conditional INSERTS are NOT gated — those are queued
+   * and only convert to a fill when the trigger hits. Letting users queue
+   * them after-hours mirrors how every real broker behaves.
+   *
+   * Fail-closed: if Alpaca /clock is unreachable AND we have no cached
+   * status, MarketClock returns null and we reject with a 4xx-shaped error
+   * (`market closed` matches the existing clientErrorMarkers list in
+   * routes/portfolio.ts). Better to refuse one order than to let an
+   * after-hours fill through silently.
+   */
+  private async ensureMarketOpen(operation: string): Promise<void> {
+    const status = await this.marketClock.tryGetStatus();
+    if (!status) {
+      throw new Error(
+        `market closed: status currently unavailable (cannot ${operation})`,
+      );
+    }
+    if (!status.isOpen) {
+      const next = new Date(status.nextOpen).toISOString();
+      throw new Error(
+        `market closed: regular session is not open (next open ${next})`,
+      );
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -356,6 +391,14 @@ export class PortfolioStore {
       throw new Error(`invalid innerType "${String(input.innerType)}"`);
     }
 
+    // Market orders fill at the moment of placement, so we must gate them on
+    // RTH. Limit/stop/trailing/conditional orders are queued and only fill
+    // when their trigger hits — those flow through fillOrder() which has its
+    // own gate.
+    if (input.type === 'market') {
+      await this.ensureMarketOpen('place market order');
+    }
+
     const ticker = input.ticker.toUpperCase();
 
     return withTransaction(async (client) => {
@@ -444,6 +487,11 @@ export class PortfolioStore {
     fillPrice: number,
   ): Promise<Portfolio> {
     ensurePositiveNumber('fillPrice', fillPrice);
+    // Gate triggered fills on RTH too. The client evaluator can otherwise
+    // fire a /fill the moment a stale post-close tick crosses a limit/stop
+    // threshold. Cancellation of a working order is allowed any time —
+    // that's `cancelOrder`, not this method.
+    await this.ensureMarketOpen('fill triggered order');
     return withTransaction(async (client) => {
       await this.applyFill(client, userId, orderId, fillPrice);
       return this.getPortfolioInTx(client, userId);

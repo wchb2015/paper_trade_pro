@@ -10,6 +10,7 @@ import type {
 } from "../lib/types";
 import { askOrPrice, bidOrPrice } from "../lib/quote";
 import { portfolioClient } from "../lib/portfolioClient";
+import { useMarketClock } from "./useMarketClock";
 
 // User-visible notification when a price alert fires. We surface BOTH a
 // react-hot-toast (always works while the tab is foregrounded) AND an OS-level
@@ -109,6 +110,11 @@ export function usePortfolio(market: Market): UsePortfolioResult {
   const [portfolio, setPortfolio] = useState<Portfolio>(emptyPortfolio);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Used by the tick evaluator to skip auto-fills when the market is closed.
+  // The server gate would reject those calls anyway (and noisily, with one
+  // toast per tick); skipping client-side keeps things quiet without losing
+  // safety. Alerts continue to fire — they're notifications, not routing.
+  const { clock: marketClock } = useMarketClock();
 
   // Guard against redundant calls for the same id while one is in flight.
   // Keyed by order id (for fill/cancel) or alert id (for trigger).
@@ -284,7 +290,14 @@ export function usePortfolio(market: Market): UsePortfolioResult {
   useEffect(() => {
     if (!loaded) return;
 
+    // Skip auto-fills outside the regular session. The server-side gate would
+    // 4xx these anyway; doing it here keeps the toast log clean. We treat
+    // "clock unknown" (null/loading) as closed for safety — same call as the
+    // TradeTicket disable. Alerts below are NOT gated; they're notifications.
+    const ordersAllowedToFill = marketClock?.isOpen === true;
+
     for (const order of portfolio.orders) {
+      if (!ordersAllowedToFill) break;
       if (order.status !== "pending" && order.status !== "pending_fill")
         continue;
       if (inFlight.current.has(order.id)) continue;
@@ -408,7 +421,7 @@ export function usePortfolio(market: Market): UsePortfolioResult {
     // they change with every applyPortfolio and we only want to re-eval on
     // market ticks. We read current values off the state closure.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [market, loaded]);
+  }, [market, loaded, marketClock?.isOpen]);
 
   return {
     portfolio,

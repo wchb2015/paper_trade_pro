@@ -49,8 +49,10 @@ import { createPriceProvider } from "./providers";
 import { QuoteCache } from "./services/QuoteCache";
 import { PriceStreamHub } from "./services/PriceStreamHub";
 import { EquitySnapshotter } from "./services/EquitySnapshotter";
+import { MarketClock } from "./services/MarketClock";
 import { createQuotesRouter } from "./routes/quotes";
 import { createPortfolioRouter } from "./routes/portfolio";
+import { createMarketRouter } from "./routes/market";
 import { PortfolioStore } from "./store/PortfolioStore";
 
 // -----------------------------------------------------------------------------
@@ -94,10 +96,20 @@ async function main(): Promise<void> {
     }),
   );
 
+  // Market clock — single source of truth for "is the U.S. equities market
+  // open right now?". Backed by Alpaca's /v2/clock (authoritative for NYSE
+  // holidays). Used both by the order-placement gate inside PortfolioStore
+  // and by the GET /api/market/clock route the frontend polls.
+  const marketClock = new MarketClock(cfg);
+  app.use("/api", createMarketRouter({ marketClock }));
+
   // Portfolio (positions, orders, alerts, watchlist). Pre-auth: every
   // request maps to cfg.currentUserId. When we add login, replace the
   // getUserId callback with a session lookup.
-  const portfolioStore = new PortfolioStore({ initialCash: cfg.initialCash });
+  const portfolioStore = new PortfolioStore({
+    initialCash: cfg.initialCash,
+    marketClock,
+  });
   const snapshotter = new EquitySnapshotter(
     cache,
     cfg.historySnapshotIntervalMs,

@@ -9,6 +9,7 @@ import type {
 } from '../lib/types';
 import { askOrPrice, bidOrPrice } from '../lib/quote';
 import type { PlaceOrderInput } from '../hooks/usePortfolio';
+import { useMarketClock } from '../hooks/useMarketClock';
 import { replayFifo, type Lot } from '../lib/pnl';
 import { fmtMoney, fmtPct } from '../lib/format';
 
@@ -61,6 +62,15 @@ export function TradeTicket({
   // sum of selected lots and the manual Quantity input is disabled.
   const [pickerOpen, setPickerOpen] = useState(false);
   const [selectedLots, setSelectedLots] = useState<Set<string>>(new Set());
+
+  // Market hours — drives the "Market closed" banner + disables the submit
+  // button when type === 'market'. Limit/stop/trailing/conditional orders
+  // are still allowed (they're queued and only fill when triggered).
+  const { clock, loading: clockLoading } = useMarketClock();
+  // Treat unknown (first-load or fetch error) as closed for market orders so
+  // we never let one through optimistically. Limit/stop/etc. are unaffected.
+  const marketIsOpen = clock?.isOpen === true;
+  const marketBlockMarketOrder = type === 'market' && !marketIsOpen;
 
   const m = market[ticker];
   const refPrice = m?.price ?? 0;
@@ -696,10 +706,31 @@ export function TradeTicket({
         </div>
       )}
 
+      {marketBlockMarketOrder && (
+        <div
+          style={{
+            padding: 10,
+            background: 'var(--down-bg)',
+            color: 'var(--down)',
+            borderRadius: 6,
+            fontSize: 12,
+            marginBottom: 12,
+          }}
+        >
+          {clockLoading
+            ? 'Checking market status…'
+            : clock
+              ? `Market closed — opens ${formatNextOpen(clock.nextOpen)}. Switch to a limit, stop, or conditional order to queue this trade.`
+              : 'Market status unavailable — try again in a moment, or switch to a limit/stop order.'}
+        </div>
+      )}
+
       <button
         className={`btn ${sideColor}`}
         style={{ width: '100%', padding: '12px', fontSize: 14, fontWeight: 600 }}
-        disabled={!affordable || effectiveQty <= 0}
+        disabled={
+          !affordable || effectiveQty <= 0 || marketBlockMarketOrder
+        }
         onClick={submit}
       >
         {lotMode && selectedLotsList.length >= 2
@@ -709,6 +740,33 @@ export function TradeTicket({
       </button>
     </Modal>
   );
+}
+
+// Format the /clock nextOpen epoch-ms in America/New_York wall clock so the
+// user sees "Mon 9:30 AM ET" instead of a raw ISO string. Day label is
+// omitted when nextOpen is later today.
+function formatNextOpen(nextOpenEpochMs: number): string {
+  const target = new Date(nextOpenEpochMs);
+  const now = new Date();
+  const dayFmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'short',
+  });
+  const dateFmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    month: 'short',
+    day: 'numeric',
+  });
+  const timeFmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+  const sameDay = dateFmt.format(target) === dateFmt.format(now);
+  return sameDay
+    ? `${timeFmt.format(target)} ET`
+    : `${dayFmt.format(target)} ${timeFmt.format(target)} ET`;
 }
 
 interface QuickFillChipsProps {
