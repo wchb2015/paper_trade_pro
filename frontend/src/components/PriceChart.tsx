@@ -198,13 +198,18 @@ export function PriceChart({
 
         {labels.map((lbl, i) => {
           const xp = leftPad + (i / xTicks) * plotW;
+          // Anchor first/last labels to their plot edges so text doesn't
+          // overflow the SVG viewport (which clips by default) and get cut
+          // off — e.g. "13:30" centered at the right edge would lose its "0".
+          const anchor =
+            i === 0 ? 'start' : i === xTicks ? 'end' : 'middle';
           return (
             <text
               key={i}
               x={xp}
               y={height - 6}
               fontSize="10"
-              textAnchor="middle"
+              textAnchor={anchor}
               fill="var(--text-muted)"
               fontFamily="JetBrains Mono, monospace"
             >
