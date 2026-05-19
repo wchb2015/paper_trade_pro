@@ -1,6 +1,13 @@
 import { useMemo, useState } from 'react';
 import { Empty } from '../components/Empty';
+import { DateRangePicker } from '../components/DateRangePicker';
 import { ORDER_TYPES } from '../lib/orderTypes';
+import {
+  defaultRange,
+  formatRangeLabel,
+  rangeWindow,
+  type DateRangeValue,
+} from '../lib/dateRange';
 import { fmtLocalTime, fmtMoney, fmtPct } from '../lib/format';
 import { replayFifo } from '../lib/pnl';
 import type {
@@ -19,41 +26,6 @@ interface OrdersPageProps {
 }
 
 type Tab = 'working' | 'filled' | 'cancelled';
-type RangePreset = 'today' | '7d' | '30d' | '90d' | 'all' | 'custom';
-
-const PRESETS: { id: RangePreset; label: string }[] = [
-  { id: 'today', label: 'Today' },
-  { id: '7d', label: '7d' },
-  { id: '30d', label: '30d' },
-  { id: '90d', label: '90d' },
-  { id: 'all', label: 'All' },
-];
-
-// Convert a preset to an inclusive [from, to] epoch-ms window. `to` is
-// always now(); `from` walks backward by N days. 'custom' returns whatever
-// the date inputs hold; 'all' returns [0, +inf].
-function rangeWindow(
-  preset: RangePreset,
-  customFrom: string,
-  customTo: string,
-): { from: number; to: number } {
-  const now = Date.now();
-  if (preset === 'all') return { from: 0, to: Number.POSITIVE_INFINITY };
-  if (preset === 'today') {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    return { from: d.getTime(), to: now };
-  }
-  if (preset === '7d') return { from: now - 7 * 86_400_000, to: now };
-  if (preset === '30d') return { from: now - 30 * 86_400_000, to: now };
-  if (preset === '90d') return { from: now - 90 * 86_400_000, to: now };
-  // custom — date-only strings; from = start of day, to = end of day
-  const fromMs = customFrom ? new Date(`${customFrom}T00:00:00`).getTime() : 0;
-  const toMs = customTo
-    ? new Date(`${customTo}T23:59:59.999`).getTime()
-    : Number.POSITIVE_INFINITY;
-  return { from: fromMs, to: toMs };
-}
 
 function orderTimestamp(o: Order, tab: Tab): number {
   if (tab === 'filled') return o.filledAt ?? o.createdAt;
@@ -81,9 +53,7 @@ export function OrdersPage({
   onNavigate,
 }: OrdersPageProps) {
   const [tab, setTab] = useState<Tab>('filled');
-  const [preset, setPreset] = useState<RangePreset>('30d');
-  const [customFrom, setCustomFrom] = useState<string>('');
-  const [customTo, setCustomTo] = useState<string>('');
+  const [range, setRange] = useState<DateRangeValue>(() => defaultRange('30d'));
   const [symbolFilter, setSymbolFilter] = useState<string>('');
 
   // Working orders live on portfolio.orders; filled+cancelled live on
@@ -129,14 +99,14 @@ export function OrdersPage({
     const win =
       tab === 'working'
         ? { from: 0, to: Number.POSITIVE_INFINITY }
-        : rangeWindow(preset, customFrom, customTo);
+        : rangeWindow(range);
     return baseRows.filter((o) => {
       if (sym && !o.ticker.toUpperCase().includes(sym)) return false;
       const t = orderTimestamp(o, tab);
       if (t < win.from || t > win.to) return false;
       return true;
     });
-  }, [baseRows, tab, preset, customFrom, customTo, symbolFilter]);
+  }, [baseRows, tab, range, symbolFilter]);
 
   const tabHasAmber = working.length > 0;
 
@@ -147,14 +117,10 @@ export function OrdersPage({
       clear: () => setSymbolFilter(''),
     });
   }
-  if (tab !== 'working' && preset !== 'all') {
-    const presetLabel =
-      preset === 'custom'
-        ? `${customFrom || '…'} → ${customTo || '…'}`
-        : PRESETS.find((p) => p.id === preset)?.label ?? preset;
+  if (tab !== 'working' && range.presetId !== 'all') {
     activeFilterChips.push({
-      label: `Range: ${presetLabel}`,
-      clear: () => setPreset('all'),
+      label: `Range: ${formatRangeLabel(range)}`,
+      clear: () => setRange(defaultRange('all')),
     });
   }
 
@@ -173,44 +139,12 @@ export function OrdersPage({
       {/* Filter shelf */}
       <div className="orders-shelf">
         <span className="orders-shelf-label">Range</span>
-        <div className="segmented" role="tablist" aria-label="Time range">
-          {PRESETS.map((p) => (
-            <button
-              key={p.id}
-              className={preset === p.id ? 'active' : ''}
-              onClick={() => setPreset(p.id)}
-              disabled={tab === 'working'}
-              title={tab === 'working' ? 'Working orders ignore time range' : ''}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-        <div className="orders-shelf-dates">
-          <input
-            className="input mono"
-            type="date"
-            value={customFrom}
-            onChange={(e) => {
-              setCustomFrom(e.target.value);
-              setPreset('custom');
-            }}
-            disabled={tab === 'working'}
-            aria-label="From date"
-          />
-          <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>→</span>
-          <input
-            className="input mono"
-            type="date"
-            value={customTo}
-            onChange={(e) => {
-              setCustomTo(e.target.value);
-              setPreset('custom');
-            }}
-            disabled={tab === 'working'}
-            aria-label="To date"
-          />
-        </div>
+        <DateRangePicker
+          value={range}
+          onChange={setRange}
+          disabled={tab === 'working'}
+          ariaLabel="Order time range"
+        />
         <input
           className="input mono"
           placeholder="Symbol… (e.g. AAPL)"
@@ -232,7 +166,7 @@ export function OrdersPage({
           <span style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>
             {tab === 'working'
               ? 'Showing all working orders.'
-              : `Showing ${PRESETS.find((p) => p.id === preset)?.label ?? 'custom'} window.`}
+              : `Showing ${formatRangeLabel(range)} window.`}
           </span>
         ) : (
           activeFilterChips.map((c) => (
