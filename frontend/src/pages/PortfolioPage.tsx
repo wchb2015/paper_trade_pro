@@ -113,6 +113,26 @@ export function PortfolioPage({
     portfolio.alerts,
   ]);
 
+  // Top 5 by absolute unrealized P&L — keeps Overview a summary, not a
+  // second copy of the Positions tab.
+  const previewPositions = useMemo(() => {
+    return positions
+      .map((p) => {
+        const m = market[p.ticker];
+        if (!m) return null;
+        const mkt = (p.side === 'long' ? m.price : p.avgPrice) * p.qty;
+        const pnl =
+          p.side === 'long'
+            ? (m.price - p.avgPrice) * p.qty
+            : (p.avgPrice - m.price) * p.qty;
+        const pnlPct = (pnl / (p.avgPrice * p.qty)) * 100;
+        return { p, m, mkt, pnl, pnlPct };
+      })
+      .filter((r): r is NonNullable<typeof r> => r !== null)
+      .sort((a, b) => Math.abs(b.pnl) - Math.abs(a.pnl))
+      .slice(0, 5);
+  }, [positions, market]);
+
   return (
     <div>
       <div className="page-header">
@@ -283,13 +303,29 @@ export function PortfolioPage({
 
       <div className="card" style={{ marginTop: 16 }}>
         <div className="card-header">
-          <h3 className="card-title">Open positions</h3>
-          <button
-            className="btn sm ghost"
-            onClick={() => setTab('positions')}
-          >
-            View all →
-          </button>
+          <h3 className="card-title">
+            Top positions
+            {positions.length > previewPositions.length && (
+              <span
+                style={{
+                  marginLeft: 8,
+                  fontSize: 12,
+                  fontWeight: 400,
+                  color: 'var(--text-muted)',
+                }}
+              >
+                {previewPositions.length} of {positions.length} · by |P&L|
+              </span>
+            )}
+          </h3>
+          {positions.length > previewPositions.length && (
+            <button
+              className="btn sm ghost"
+              onClick={() => setTab('positions')}
+            >
+              View all →
+            </button>
+          )}
         </div>
         <div className="card-body p0">
           {positions.length === 0 ? (
@@ -312,63 +348,52 @@ export function PortfolioPage({
                 </tr>
               </thead>
               <tbody>
-                {positions.map((p) => {
-                  const m = market[p.ticker];
-                  if (!m) return null;
-                  const mkt =
-                    (p.side === 'long' ? m.price : p.avgPrice) * p.qty;
-                  const pnl =
-                    p.side === 'long'
-                      ? (m.price - p.avgPrice) * p.qty
-                      : (p.avgPrice - m.price) * p.qty;
-                  const pnlPct = (pnl / (p.avgPrice * p.qty)) * 100;
-                  return (
-                    <tr key={p.id}>
-                      <td>
-                        <div className="ticker">{p.ticker}</div>
-                      </td>
-                      <td>
-                        <span className={`pill ${p.side}`}>
-                          {p.side.toUpperCase()}
-                        </span>
-                      </td>
-                      <td className="num">{p.qty}</td>
-                      <td className="num">${p.avgPrice.toFixed(2)}</td>
-                      <td className="num">
-                        <PriceCell value={m.price} prefix="$" />
-                      </td>
-                      <td className="num">${mkt.toFixed(2)}</td>
-                      <td className="num">
-                        <div
-                          style={{
-                            color: pnl >= 0 ? 'var(--up)' : 'var(--down)',
-                            fontWeight: 500,
-                          }}
-                        >
-                          {fmtMoney(pnl, { signed: true })}
-                        </div>
-                        <div
-                          style={{ fontSize: 11, color: 'var(--text-muted)' }}
-                        >
-                          {fmtPct(pnlPct)}
-                        </div>
-                      </td>
-                      <td style={{ textAlign: 'right' }}>
-                        <button
-                          className="btn sm"
-                          onClick={() =>
-                            setTradeCtx({
-                              ticker: p.ticker,
-                              side: p.side === 'long' ? 'sell' : 'cover',
-                            })
-                          }
-                        >
-                          Close
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {previewPositions.map(({ p, m, mkt, pnl, pnlPct }) => (
+                  <tr key={p.id}>
+                    <td>
+                      <div className="ticker">{p.ticker}</div>
+                    </td>
+                    <td>
+                      <span className={`pill ${p.side}`}>
+                        {p.side.toUpperCase()}
+                      </span>
+                    </td>
+                    <td className="num">{p.qty}</td>
+                    <td className="num">${p.avgPrice.toFixed(2)}</td>
+                    <td className="num">
+                      <PriceCell value={m.price} prefix="$" />
+                    </td>
+                    <td className="num">${mkt.toFixed(2)}</td>
+                    <td className="num">
+                      <div
+                        style={{
+                          color: pnl >= 0 ? 'var(--up)' : 'var(--down)',
+                          fontWeight: 500,
+                        }}
+                      >
+                        {fmtMoney(pnl, { signed: true })}
+                      </div>
+                      <div
+                        style={{ fontSize: 11, color: 'var(--text-muted)' }}
+                      >
+                        {fmtPct(pnlPct)}
+                      </div>
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <button
+                        className="btn sm"
+                        onClick={() =>
+                          setTradeCtx({
+                            ticker: p.ticker,
+                            side: p.side === 'long' ? 'sell' : 'cover',
+                          })
+                        }
+                      >
+                        Close
+                      </button>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           )}
