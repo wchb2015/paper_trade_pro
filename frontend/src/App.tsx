@@ -122,7 +122,6 @@ export default function App() {
         theme={theme}
         setTheme={setTheme}
         onOpenTweaks={() => setTweaksOpen((v) => !v)}
-        onOpenAccount={() => onNavigate("account")}
         liveConnected={liveConnected}
         provider={provider}
         providerStatus={providerStatus}

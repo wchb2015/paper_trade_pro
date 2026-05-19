@@ -10,7 +10,6 @@ interface TopBarProps {
   theme: Theme;
   setTheme: (t: Theme) => void;
   onOpenTweaks: () => void;
-  onOpenAccount: () => void;
   liveConnected: boolean;
   provider: string;
   providerStatus: "live" | "stale" | "unavailable";
@@ -78,7 +77,6 @@ export function TopBar({
   theme,
   setTheme,
   onOpenTweaks,
-  onOpenAccount,
   liveConnected,
   provider,
   providerStatus,
@@ -176,13 +174,6 @@ export function TopBar({
           title="Tweaks"
         >
           <Icon name="settings" size={16} />
-        </button>
-        <button
-          className="btn ghost icon-only"
-          onClick={onOpenAccount}
-          title="Account"
-        >
-          <Icon name="account" size={16} />
         </button>
         <button
           className="btn ghost icon-only"
