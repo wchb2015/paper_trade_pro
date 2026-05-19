@@ -578,12 +578,78 @@ export function TradePage({
             )}
           </div>
 
-          <OrderPanel
-            ticker={activeTicker}
-            market={market}
-            portfolio={portfolio}
-            setTradeCtx={setTradeCtx}
-          />
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 16,
+              position: 'sticky',
+              top: 74,
+            }}
+          >
+            <OrderPanel
+              ticker={activeTicker}
+              market={market}
+              portfolio={portfolio}
+              setTradeCtx={setTradeCtx}
+            />
+            <div className="card">
+              <div className="card-header">
+                <h3 className="card-title">Alerts</h3>
+                <button
+                  className="btn sm accent"
+                  onClick={() => setAlertCtx({ ticker: activeTicker })}
+                >
+                  + New
+                </button>
+              </div>
+              <div className="card-body p0">
+                {symbolAlerts.length === 0 ? (
+                  <Empty
+                    title={`No alerts on ${activeTicker}`}
+                    subtitle="Click + New to be notified at a price you choose."
+                  />
+                ) : (
+                  symbolAlerts.map((a) => (
+                    <div
+                      key={a.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '10px 18px',
+                        borderBottom: '1px solid var(--border)',
+                        gap: 14,
+                      }}
+                    >
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, color: 'var(--text)' }}>
+                          {a.condition === 'above' ? 'Above' : 'Below'}{' '}
+                          <span
+                            className="mono tnum"
+                            style={{ fontWeight: 600 }}
+                          >
+                            ${a.price.toFixed(2)}
+                          </span>
+                        </div>
+                        {a.note && (
+                          <div className="company" style={{ marginTop: 2 }}>
+                            {a.note}
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        className="btn sm ghost icon-only"
+                        onClick={() => removeAlert(a.id)}
+                        title="Delete alert"
+                      >
+                        <Icon name="close" size={14} />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
         </div>
 
         {symbolOrders.length > 0 && (
@@ -649,59 +715,6 @@ export function TradePage({
           </div>
         )}
 
-        <div className="card" style={{ marginTop: 16 }}>
-          <div className="card-header">
-            <h3 className="card-title">Alerts for {activeTicker}</h3>
-            <button
-              className="btn sm accent"
-              onClick={() => setAlertCtx({ ticker: activeTicker })}
-            >
-              + New alert
-            </button>
-          </div>
-          <div className="card-body p0">
-            {symbolAlerts.length === 0 ? (
-              <Empty
-                title={`No alerts on ${activeTicker}`}
-                subtitle="Click + New alert to be notified at a price you choose."
-              />
-            ) : (
-              symbolAlerts.map((a) => (
-                <div
-                  key={a.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    padding: '10px 18px',
-                    borderBottom: '1px solid var(--border)',
-                    gap: 14,
-                  }}
-                >
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13, color: 'var(--text)' }}>
-                      {a.condition === 'above' ? 'Above' : 'Below'}{' '}
-                      <span className="mono tnum" style={{ fontWeight: 600 }}>
-                        ${a.price.toFixed(2)}
-                      </span>
-                    </div>
-                    {a.note && (
-                      <div className="company" style={{ marginTop: 2 }}>
-                        {a.note}
-                      </div>
-                    )}
-                  </div>
-                  <button
-                    className="btn sm ghost icon-only"
-                    onClick={() => removeAlert(a.id)}
-                    title="Delete alert"
-                  >
-                    <Icon name="close" size={14} />
-                  </button>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
       </div>
     </div>
   );
@@ -723,7 +736,7 @@ function OrderPanel({
   const m = market[ticker];
   if (!m) return null;
   return (
-    <div className="card" style={{ position: 'sticky', top: 74 }}>
+    <div className="card">
       <div className="card-header">
         <h3 className="card-title">Place order</h3>
       </div>
@@ -741,7 +754,7 @@ function OrderPanel({
             style={{ padding: 12 }}
             onClick={() => setTradeCtx({ ticker, side: 'buy' })}
           >
-            Buy / Long
+            Buy
           </button>
           <button
             className="btn sell"
