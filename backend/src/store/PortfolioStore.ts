@@ -654,6 +654,8 @@ export class PortfolioStore {
 
   /**
    * Fetch equity snapshots for a user, oldest first, filtered by `range`.
+   *   1D  — last 24 hours
+   *   1W  — last 7 days
    *   1M  — last 31 days
    *   3M  — last 93 days
    *   YTD — from Jan 1 of the current calendar year (UTC anchor; per
@@ -667,7 +669,11 @@ export class PortfolioStore {
     range: string,
   ): Promise<{ t: number; p: number }[]> {
     let where = `user_id = $1`;
-    if (range === '1M') {
+    if (range === '1D') {
+      where += ` AND taken_at >= now() - interval '24 hours'`;
+    } else if (range === '1W') {
+      where += ` AND taken_at >= now() - interval '7 days'`;
+    } else if (range === '1M') {
       where += ` AND taken_at >= now() - interval '31 days'`;
     } else if (range === '3M') {
       where += ` AND taken_at >= now() - interval '93 days'`;

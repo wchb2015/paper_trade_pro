@@ -303,11 +303,11 @@ export function createPortfolioRouter(deps: RouteDeps): Router {
     }
   });
 
-  // GET /api/portfolio/history?range=1M|3M|YTD|ALL
+  // GET /api/portfolio/history?range=1D|1W|1M|3M|YTD|ALL
   router.get("/portfolio/history", async (req: Request, res: Response) => {
     try {
       const raw = req.query.range;
-      const rangeStr = typeof raw === "string" ? raw : "1M";
+      const rangeStr = typeof raw === "string" ? raw : "1D";
       if (!isHistoryRange(rangeStr)) {
         return res.status(400).json({ error: `invalid range "${rangeStr}"` });
       }

@@ -35,7 +35,7 @@ export function PortfolioPage({
   const totalPct = ((totalValue - initialCash) / initialCash) * 100;
   const dayPct = initialCash ? (valuation.dayPnL / initialCash) * 100 : 0;
 
-  const [range, setRange] = useState<HistoryRange>('1M');
+  const [range, setRange] = useState<HistoryRange>('1D');
   const [historyPoints, setHistoryPoints] = useState<PriceChartPoint[]>([]);
   const [historyError, setHistoryError] = useState<string | null>(null);
 
@@ -74,6 +74,18 @@ export function PortfolioPage({
     if (last && Date.now() - last.t < 5_000) return historyPoints;
     return [...historyPoints, { t: Date.now(), p: totalValue }];
   }, [historyPoints, totalValue]);
+
+  // Range-scoped delta: difference between the rightmost (live) and leftmost
+  // points of the chart series. Mirrors what the user sees on the curve.
+  const rangeDelta = useMemo(() => {
+    if (chartPoints.length < 2) return null;
+    const start = chartPoints[0]!.p;
+    const end = chartPoints[chartPoints.length - 1]!.p;
+    if (!Number.isFinite(start) || start === 0) return null;
+    const abs = end - start;
+    const pct = (abs / start) * 100;
+    return { abs, pct };
+  }, [chartPoints]);
 
   // Rank movers from the user's tracked symbols (watchlist + positions +
   // working orders + alerts). No static catalog any more — the dashboard
@@ -178,9 +190,26 @@ export function PortfolioPage({
       <div className="grid-2">
         <div className="card">
           <div className="card-header">
-            <h3 className="card-title">Portfolio value</h3>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+              <h3 className="card-title">Portfolio value</h3>
+              {rangeDelta && (
+                <div
+                  style={{
+                    fontSize: 12,
+                    color:
+                      rangeDelta.abs >= 0 ? 'var(--up)' : 'var(--down)',
+                    fontWeight: 500,
+                  }}
+                >
+                  {fmtMoney(rangeDelta.abs, { signed: true })}{' '}
+                  <span style={{ opacity: 0.85 }}>
+                    ({fmtPct(rangeDelta.pct)})
+                  </span>
+                </div>
+              )}
+            </div>
             <div className="segmented">
-              {(['1M', '3M', 'YTD', 'ALL'] as const).map((r) => (
+              {(['1D', '1W', '1M', '3M', 'YTD', 'ALL'] as const).map((r) => (
                 <button
                   key={r}
                   className={range === r ? 'active' : ''}
@@ -192,7 +221,11 @@ export function PortfolioPage({
             </div>
           </div>
           <div className="card-body">
-            <PriceChart points={chartPoints} height={260} />
+            <PriceChart
+              points={chartPoints}
+              height={260}
+              xLabelMode={range === '1D' ? 'time' : 'date'}
+            />
             {historyError && (
               <div
                 style={{

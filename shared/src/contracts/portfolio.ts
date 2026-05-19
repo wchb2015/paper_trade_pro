@@ -64,9 +64,11 @@ export const ALERT_CONDITIONS: readonly AlertCondition[] = ['above', 'below'] as
 
 export const CONDITIONAL_OPS: readonly ConditionalOp[] = ['>=', '<='] as const;
 
-export type HistoryRange = '1M' | '3M' | 'YTD' | 'ALL';
+export type HistoryRange = '1D' | '1W' | '1M' | '3M' | 'YTD' | 'ALL';
 
 export const HISTORY_RANGES: readonly HistoryRange[] = [
+  '1D',
+  '1W',
   '1M',
   '3M',
   'YTD',

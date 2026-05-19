@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 
 export interface PriceChartPoint {
   /** Epoch ms. */
@@ -49,17 +49,29 @@ export function PriceChart({
   showArea = true,
   xLabelMode = 'date',
 }: PriceChartProps) {
-  const wrapRef = useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(600);
   const [hover, setHover] = useState<HoverState | null>(null);
 
-  useEffect(() => {
-    if (!wrapRef.current) return;
+  // Callback ref instead of useRef + useEffect([], …): when the chart first
+  // mounts with <2 points it returns null (no wrap div ever rendered), so a
+  // one-shot effect would attach the ResizeObserver to null and never re-fire
+  // when the data later arrives — leaving `width` stuck at the initial 600
+  // and the SVG painted into the left ~600px of a wider canvas. A callback
+  // ref fires every time React attaches/detaches the wrap div, so the
+  // observer connects as soon as the SVG is actually rendered.
+  const roRef = useRef<ResizeObserver | null>(null);
+  const wrapRef = useCallback((node: HTMLDivElement | null) => {
+    if (roRef.current) {
+      roRef.current.disconnect();
+      roRef.current = null;
+    }
+    if (!node) return;
+    setWidth(node.getBoundingClientRect().width);
     const ro = new ResizeObserver((entries) => {
       setWidth(entries[0].contentRect.width);
     });
-    ro.observe(wrapRef.current);
-    return () => ro.disconnect();
+    ro.observe(node);
+    roRef.current = ro;
   }, []);
 
   // Normalize either input shape into a single array of {t, p}. When the

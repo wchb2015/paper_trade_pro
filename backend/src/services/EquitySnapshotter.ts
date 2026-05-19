@@ -80,6 +80,14 @@ export class EquitySnapshotter {
    * Write a snapshot for a single user — used by routes after fill/reset.
    * Catches and logs internally so a snapshot failure never breaks the
    * route's success path. Returns true if a row was written.
+   *
+   * Skip rule: if any position has no cached live quote, valueUser would fall
+   * back to avg_price for that symbol — which inflates equity to cost basis
+   * and produces phantom upward spikes on the chart, especially right after
+   * a server restart when the QuoteCache is empty. We refuse to write in
+   * that case and warn-log; the next tick (after the stream warms up) will
+   * record an honest point. Per CLAUDE.md rule 5, this is a graceful
+   * fallback that is still logged.
    */
   async snapshotUser(userId: string): Promise<boolean> {
     try {
@@ -96,6 +104,18 @@ export class EquitySnapshotter {
         [userId],
       );
       const v = this.valueUser(a.cash, positions.rows);
+      if (v.missingPrices > 0) {
+        log.warn(
+          {
+            userId,
+            missingPrices: v.missingPrices,
+            missingTickers: v.missingTickers,
+            operation: 'snapshotter.snapshotUser',
+          },
+          'EquitySnapshotter.snapshotUser skipped: missing live quotes (would inflate equity to avg_price)',
+        );
+        return false;
+      }
       await this.pool.query(
         `INSERT INTO paper_trade_pro.equity_snapshots
            (user_id, equity, cash, market_value)
@@ -185,9 +205,27 @@ export class EquitySnapshotter {
 
     let inserted = 0;
     let skipped = 0;
+    let skippedMissing = 0;
     for (const u of users) {
       try {
         const v = this.valueUser(u.cash, byUser.get(u.user_id) ?? []);
+        if (v.missingPrices > 0) {
+          // Cache hasn't warmed up for at least one held symbol yet (typical
+          // right after a Node restart, before the websocket stream delivers
+          // its first tick). Writing now would price those positions at
+          // avg_price, producing a fake upward spike. Skip and warn.
+          skippedMissing++;
+          log.warn(
+            {
+              userId: u.user_id,
+              missingPrices: v.missingPrices,
+              missingTickers: v.missingTickers,
+              operation: 'snapshotter.tick',
+            },
+            'EquitySnapshotter.tick skipped user: missing live quotes',
+          );
+          continue;
+        }
         const prev = lastEquity.get(u.user_id);
         if (prev != null && Math.abs(prev - v.equity) < DEDUPE_EPSILON) {
           skipped++;
@@ -207,29 +245,49 @@ export class EquitySnapshotter {
         );
       }
     }
-    if (skipped > 0) {
+    if (skipped > 0 || skippedMissing > 0) {
       log.debug(
-        { inserted, skipped, total: users.length },
-        'EquitySnapshotter tick complete (dedupe applied)',
+        {
+          inserted,
+          skipped,
+          skippedMissing,
+          total: users.length,
+        },
+        'EquitySnapshotter tick complete',
       );
     }
   }
 
   /**
-   * Pure pricing math. Looks up live quotes via cache.peek(), falls back to
-   * avg_price when the symbol hasn't been priced yet. Mirrors usePortfolio.ts
-   * so server-side and client-side equity numbers agree.
+   * Pure pricing math. Looks up live quotes via cache.peek(); when a symbol
+   * isn't cached yet we still fall back to avg_price for the math, but we
+   * report the miss via `missingPrices`/`missingTickers` so callers can
+   * decide whether to persist the result. Persisting an avg_price-priced
+   * snapshot inflates equity to cost basis and pollutes the chart, so the
+   * snapshot writers skip the row when this count is > 0.
    */
   private valueUser(
     cash: number,
     positions: PositionRow[],
-  ): { cash: number; marketValue: number; equity: number } {
+  ): {
+    cash: number;
+    marketValue: number;
+    equity: number;
+    missingPrices: number;
+    missingTickers: string[];
+  } {
     let marketValue = 0;
     let equity = cash;
+    let missingPrices = 0;
+    const missingTickers: string[] = [];
     for (const pos of positions) {
       const q = this.cache.peek(pos.ticker);
-      const livePrice =
-        q && Number.isFinite(q.price) && q.price > 0 ? q.price : pos.avg_price;
+      const haveLive = !!(q && Number.isFinite(q.price) && q.price > 0);
+      const livePrice = haveLive ? (q as { price: number }).price : pos.avg_price;
+      if (!haveLive) {
+        missingPrices++;
+        if (!missingTickers.includes(pos.ticker)) missingTickers.push(pos.ticker);
+      }
       if (pos.side === 'long') {
         marketValue += pos.qty * livePrice;
         equity += pos.qty * livePrice;
@@ -242,6 +300,8 @@ export class EquitySnapshotter {
       cash: round2(cash),
       marketValue: round2(marketValue),
       equity: round2(equity),
+      missingPrices,
+      missingTickers,
     };
   }
 }
