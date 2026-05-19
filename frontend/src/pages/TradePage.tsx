@@ -72,7 +72,7 @@ export function TradePage({
     setActiveTicker(ticker);
   }, [ticker]);
 
-  const [range, setRange] = useState<RangeKey>('1M');
+  const [range, setRange] = useState<RangeKey>('1D');
   const [extMode, setExtMode] = useState<'rth' | 'iex' | 'sip'>('rth');
   const [feedSwitching, setFeedSwitching] = useState(false);
 

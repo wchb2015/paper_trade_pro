@@ -84,6 +84,36 @@ export function PriceChart({
   }, [points, data]);
   const hasTime = points !== undefined && points.length > 0;
 
+  // Index boundaries where the ET calendar day rolls over between two
+  // adjacent bars. Used on intraday charts to draw a separator so a 1D
+  // view that spans yesterday's after-hours + today's session doesn't
+  // visually fuse two days into one continuous run.
+  const dayBoundaries = useMemo(() => {
+    if (!hasTime || xLabelMode !== 'time') return [];
+    const keyFmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const labelFmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      month: 'short',
+      day: 'numeric',
+    });
+    const out: { idx: number; label: string }[] = [];
+    let prevKey: string | null = null;
+    for (let i = 0; i < series.length; i++) {
+      const d = new Date(series[i].t);
+      const key = keyFmt.format(d);
+      if (prevKey !== null && key !== prevKey) {
+        out.push({ idx: i, label: labelFmt.format(d) });
+      }
+      prevKey = key;
+    }
+    return out;
+  }, [series, hasTime, xLabelMode]);
+
   if (series.length < 2) return null;
 
   const prices = series.map((s) => s.p);
@@ -215,6 +245,42 @@ export function PriceChart({
             >
               {lbl}
             </text>
+          );
+        })}
+
+        {dayBoundaries.map((b) => {
+          // Draw the divider midway between the last bar of the previous
+          // day and the first bar of the new day so it reads as a gap, not
+          // as belonging to either side. Anchor the date label to the
+          // right of the line (start of the new day) and keep it inside
+          // the plot rect so it doesn't overflow past the right edge.
+          const xLine = (x(b.idx - 1) + x(b.idx)) / 2;
+          const labelMaxX = leftPad + plotW - 4;
+          const xLabel = Math.min(xLine + 4, labelMaxX);
+          const labelAnchor = xLabel >= labelMaxX ? 'end' : 'start';
+          return (
+            <g key={`day-${b.idx}`}>
+              <line
+                x1={xLine}
+                x2={xLine}
+                y1={topPad}
+                y2={topPad + plotH}
+                stroke="var(--border-strong)"
+                strokeDasharray="3 3"
+                strokeWidth="1"
+                opacity="0.7"
+              />
+              <text
+                x={xLabel}
+                y={topPad + 10}
+                fontSize="10"
+                textAnchor={labelAnchor}
+                fill="var(--text-muted)"
+                fontFamily="JetBrains Mono, monospace"
+              >
+                {b.label}
+              </text>
+            </g>
           );
         })}
 
