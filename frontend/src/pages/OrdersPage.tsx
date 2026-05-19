@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Empty } from '../components/Empty';
-import { ORDER_TYPES } from '../components/TradeTicket';
+import { ORDER_TYPES } from '../lib/orderTypes';
 import { fmtLocalTime, fmtMoney, fmtPct } from '../lib/format';
 import { replayFifo } from '../lib/pnl';
 import type {

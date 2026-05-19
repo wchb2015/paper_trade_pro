@@ -3,17 +3,19 @@ import { toast } from 'react-hot-toast';
 import { Icon } from '../components/Icon';
 import { PriceChart } from '../components/PriceChart';
 import { Empty } from '../components/Empty';
+import { TradeForm } from '../components/TradeForm';
 import { fmtLocalTime, fmtMoney, fmtPct } from '../lib/format';
 import { dayChange, dayChangePct, money } from '../lib/quote';
 import { useBars } from '../hooks/useBars';
 import { priceClient } from '../lib/priceClient';
+import type { PlaceOrderInput } from '../hooks/usePortfolio';
 import type { AlpacaFeed, BarTimeframe } from '../../../shared/src';
 import type {
   AlertCtx,
   Market,
+  OrderSide,
   PageKey,
   Portfolio,
-  TradeCtx,
 } from '../lib/types';
 
 interface TradePageProps {
@@ -21,7 +23,7 @@ interface TradePageProps {
   market: Market;
   portfolio: Portfolio;
   toggleWatch: (ticker: string) => void;
-  setTradeCtx: (ctx: TradeCtx | null) => void;
+  placeOrder: (order: PlaceOrderInput) => void;
   setAlertCtx: (ctx: AlertCtx | null) => void;
   cancelOrder: (id: string) => void;
   removeAlert: (id: string) => void;
@@ -51,13 +53,16 @@ export function TradePage({
   market,
   portfolio,
   toggleWatch,
-  setTradeCtx,
+  placeOrder,
   setAlertCtx,
   cancelOrder,
   removeAlert,
   onNavigate,
   liveFeed,
 }: TradePageProps) {
+  // Lifted side state — lets the position-card "Close" button preset the
+  // inline TradeForm to sell/cover instead of spawning a separate modal.
+  const [formSide, setFormSide] = useState<OrderSide>('buy');
   // Mirror the prop-driven ticker into local state so the rail can switch
   // symbol without leaving the page. Also reflect the change up to App via
   // onNavigate so persisted state survives reloads.
@@ -67,8 +72,8 @@ export function TradePage({
   // an effect targets cascading-render footguns; here we are explicitly
   // syncing one external authority into local state, which is the pattern
   // the rule's docs suggest as the legitimate exception.
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setActiveTicker(ticker);
   }, [ticker]);
 
@@ -560,12 +565,15 @@ export function TradePage({
                           >
                             <button
                               className="btn sm"
-                              onClick={() =>
-                                setTradeCtx({
-                                  ticker: activeTicker,
-                                  side: p.side === 'long' ? 'sell' : 'cover',
-                                })
-                              }
+                              onClick={() => {
+                                setFormSide(p.side === 'long' ? 'sell' : 'cover');
+                                document
+                                  .getElementById('trade-form-card')
+                                  ?.scrollIntoView({
+                                    behavior: 'smooth',
+                                    block: 'start',
+                                  });
+                              }}
                             >
                               Close
                             </button>
@@ -587,12 +595,21 @@ export function TradePage({
               top: 74,
             }}
           >
-            <OrderPanel
-              ticker={activeTicker}
-              market={market}
-              portfolio={portfolio}
-              setTradeCtx={setTradeCtx}
-            />
+            <div className="card" id="trade-form-card">
+              <div className="card-header">
+                <h3 className="card-title">Place order</h3>
+              </div>
+              <div className="card-body">
+                <TradeForm
+                  ticker={activeTicker}
+                  market={market}
+                  portfolio={portfolio}
+                  placeOrder={placeOrder}
+                  initialSide={formSide}
+                  layout="panel"
+                />
+              </div>
+            </div>
             <div className="card">
               <div className="card-header">
                 <h3 className="card-title">Alerts</h3>
@@ -716,139 +733,6 @@ export function TradePage({
         )}
 
       </div>
-    </div>
-  );
-}
-
-interface OrderPanelProps {
-  ticker: string;
-  market: Market;
-  portfolio: Portfolio;
-  setTradeCtx: (ctx: TradeCtx | null) => void;
-}
-
-function OrderPanel({
-  ticker,
-  market,
-  portfolio,
-  setTradeCtx,
-}: OrderPanelProps) {
-  const m = market[ticker];
-  if (!m) return null;
-  return (
-    <div className="card">
-      <div className="card-header">
-        <h3 className="card-title">Place order</h3>
-      </div>
-      <div className="card-body">
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap: 8,
-            marginBottom: 10,
-          }}
-        >
-          <button
-            className="btn buy"
-            style={{ padding: 12 }}
-            onClick={() => setTradeCtx({ ticker, side: 'buy' })}
-          >
-            Buy
-          </button>
-          <button
-            className="btn sell"
-            style={{ padding: 12 }}
-            onClick={() => setTradeCtx({ ticker, side: 'sell' })}
-          >
-            Sell
-          </button>
-        </div>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap: 8,
-            marginBottom: 14,
-          }}
-        >
-          <button
-            className="btn"
-            style={{ padding: 10 }}
-            onClick={() => setTradeCtx({ ticker, side: 'short' })}
-          >
-            Short
-          </button>
-          <button
-            className="btn"
-            style={{ padding: 10 }}
-            onClick={() => setTradeCtx({ ticker, side: 'cover' })}
-          >
-            Cover
-          </button>
-        </div>
-
-        <div
-          style={{
-            fontSize: 11,
-            color: 'var(--text-muted)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em',
-            marginBottom: 8,
-            fontWeight: 500,
-          }}
-        >
-          Quick info
-        </div>
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 8,
-            fontSize: 12.5,
-          }}
-        >
-          <Row
-            label="Bid × Ask"
-            val={
-              <span className="mono tnum">
-                {money(m.bid)} × {money(m.ask)}
-              </span>
-            }
-          />
-          <Row
-            label="Spread"
-            val={
-              <span className="mono tnum">
-                {m.bid != null && m.ask != null
-                  ? `$${(m.ask - m.bid).toFixed(2)}`
-                  : '—'}
-              </span>
-            }
-          />
-          <Row
-            label="Day range"
-            val={
-              <span className="mono tnum">
-                {money(m.dayLow)} – {money(m.dayHigh)}
-              </span>
-            }
-          />
-          <Row
-            label="Buying power"
-            val={<span className="mono tnum">{fmtMoney(portfolio.cash)}</span>}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Row({ label, val }: { label: string; val: ReactNode }) {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-      <span style={{ color: 'var(--text-muted)' }}>{label}</span>
-      <span>{val}</span>
     </div>
   );
 }

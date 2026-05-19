@@ -23,6 +23,7 @@ interface PageRouterProps {
   portfolio: Portfolio;
   valuation: Valuation;
   toggleWatch: UsePortfolioResult["toggleWatch"];
+  placeOrder: UsePortfolioResult["placeOrder"];
   cancelOrder: UsePortfolioResult["cancelOrder"];
   toggleAlert: UsePortfolioResult["toggleAlert"];
   removeAlert: UsePortfolioResult["removeAlert"];
@@ -43,6 +44,7 @@ export function PageRouter(props: PageRouterProps) {
     portfolio,
     valuation,
     toggleWatch,
+    placeOrder,
     cancelOrder,
     toggleAlert,
     removeAlert,
@@ -85,7 +87,7 @@ export function PageRouter(props: PageRouterProps) {
           market={market}
           portfolio={portfolio}
           toggleWatch={toggleWatch}
-          setTradeCtx={setTradeCtx}
+          placeOrder={placeOrder}
           setAlertCtx={setAlertCtx}
           cancelOrder={cancelOrder}
           removeAlert={removeAlert}
