@@ -1,11 +1,13 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { toast } from 'react-hot-toast';
 import { Icon } from '../components/Icon';
 import { PriceChart } from '../components/PriceChart';
 import { Empty } from '../components/Empty';
 import { TradeForm } from '../components/TradeForm';
+import { LotSellPanel } from '../components/LotSellPanel';
 import { fmtLocalTime, fmtMoney, fmtPct } from '../lib/format';
 import { dayChange, dayChangePct, money } from '../lib/quote';
+import { getLotRows, type LotRow } from '../lib/lotView';
 import { useBars } from '../hooks/useBars';
 import { priceClient } from '../lib/priceClient';
 import type { PlaceOrderInput } from '../hooks/usePortfolio';
@@ -63,6 +65,7 @@ export function TradePage({
   // Lifted side state — lets the position-card "Close" button preset the
   // inline TradeForm to sell/cover instead of spawning a separate modal.
   const [formSide, setFormSide] = useState<OrderSide>('buy');
+  const [tradeMode, setTradeMode] = useState<'quick' | 'byLot'>('quick');
   // Mirror the prop-driven ticker into local state so the rail can switch
   // symbol without leaving the page. Also reflect the change up to App via
   // onNavigate so persisted state survives reloads.
@@ -75,6 +78,7 @@ export function TradePage({
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setActiveTicker(ticker);
+    setTradeMode('quick');
   }, [ticker]);
 
   const [range, setRange] = useState<RangeKey>('1D');
@@ -95,6 +99,7 @@ export function TradePage({
 
   const switchTo = (sym: string) => {
     setActiveTicker(sym);
+    setTradeMode('quick');
     onNavigate('trade', sym);
     setRecent((prev) => {
       const next = [sym, ...prev.filter((t) => t !== sym)].slice(0, 5);
@@ -220,6 +225,16 @@ export function TradePage({
       : null;
 
   const m = market[activeTicker];
+
+  // Lot rows for the "By lot" tab. Memoized on history/positions/markPrice so
+  // it only recomputes when something the panel actually displays changes.
+  // Hook must run before the !m early-return; we read price defensively.
+  const markPrice = m?.price ?? 0;
+  const lotRowsResult = useMemo(
+    () => getLotRows(portfolio, activeTicker, market),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeTicker, portfolio.history, portfolio.positions, markPrice],
+  );
 
   if (!m) {
     return (
@@ -598,16 +613,45 @@ export function TradePage({
             <div className="card" id="trade-form-card">
               <div className="card-header">
                 <h3 className="card-title">Place order</h3>
+                <div className="segmented trade-mode-tabs" role="tablist">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={tradeMode === 'quick'}
+                    className={tradeMode === 'quick' ? 'active' : ''}
+                    onClick={() => setTradeMode('quick')}
+                  >
+                    Quick trade
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={tradeMode === 'byLot'}
+                    className={tradeMode === 'byLot' ? 'active' : ''}
+                    onClick={() => setTradeMode('byLot')}
+                  >
+                    By lot
+                  </button>
+                </div>
               </div>
               <div className="card-body">
-                <TradeForm
-                  ticker={activeTicker}
-                  market={market}
-                  portfolio={portfolio}
-                  placeOrder={placeOrder}
-                  initialSide={formSide}
-                  layout="panel"
-                />
+                {tradeMode === 'quick' ? (
+                  <TradeForm
+                    ticker={activeTicker}
+                    market={market}
+                    portfolio={portfolio}
+                    placeOrder={placeOrder}
+                    initialSide={formSide}
+                    layout="panel"
+                  />
+                ) : (
+                  <ByLotView
+                    ticker={activeTicker}
+                    market={market}
+                    placeOrder={placeOrder}
+                    rows={lotRowsResult}
+                  />
+                )}
               </div>
             </div>
             <div className="card">
@@ -754,4 +798,62 @@ function filterRegularHours<T extends { t: number }>(bars: T[]): T[] {
     const minutesET = h * 60 + min;
     return minutesET >= 9 * 60 + 30 && minutesET < 16 * 60;
   });
+}
+
+interface ByLotViewProps {
+  ticker: string;
+  market: Market;
+  placeOrder: (order: PlaceOrderInput) => void;
+  rows: {
+    long: LotRow[];
+    short: LotRow[];
+    aggregate: boolean;
+    failed: boolean;
+  };
+}
+
+function ByLotView({ ticker, market, placeOrder, rows }: ByLotViewProps) {
+  if (rows.failed) {
+    return (
+      <div className="lot-warn">
+        Lot history unavailable for {ticker}. Use Quick trade to manage this
+        position.
+      </div>
+    );
+  }
+
+  if (rows.long.length === 0 && rows.short.length === 0) {
+    return (
+      <div className="trade-bylot-empty">
+        No open shares of {ticker}. Open a position from{' '}
+        <span style={{ fontWeight: 600 }}>Quick trade</span> to use lot
+        selling.
+      </div>
+    );
+  }
+
+  return (
+    <div className="trade-bylot">
+      {rows.long.length > 0 && (
+        <LotSellPanel
+          ticker={ticker}
+          side="long"
+          rows={rows.long}
+          aggregateFallback={rows.long.some((r) => r.aggregateFallback)}
+          market={market}
+          placeOrder={placeOrder}
+        />
+      )}
+      {rows.short.length > 0 && (
+        <LotSellPanel
+          ticker={ticker}
+          side="short"
+          rows={rows.short}
+          aggregateFallback={rows.short.some((r) => r.aggregateFallback)}
+          market={market}
+          placeOrder={placeOrder}
+        />
+      )}
+    </div>
+  );
 }
