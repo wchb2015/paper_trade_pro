@@ -7,6 +7,7 @@
 
 export type {
   AlertCondition,
+  AuthUser,
   OrderSide,
   OrderType,
   TimeInForce,
