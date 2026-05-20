@@ -16,12 +16,15 @@ import type {
   SubscriptionsResponse,
 } from "../../../shared/src";
 import { SOCKET_EVENTS } from "../../../shared/src";
-import { config } from "../config";
 
 // -----------------------------------------------------------------------------
 // Single source of truth for talking to the backend. REST calls are cached
 // by the server; the socket delivers live trade ticks. All UI code that
 // needs a price goes through here — no component fetches prices directly.
+//
+// Same-origin: REST paths are relative; the WS uses '/' so socket.io
+// connects to the current page origin. The Vite dev proxy and prod nginx
+// both forward /socket.io/ to the backend.
 // -----------------------------------------------------------------------------
 
 export interface PriceClientSubscribers {
@@ -33,23 +36,18 @@ export interface PriceClientSubscribers {
 export class PriceClient {
   private socket: Socket<ServerToClientEvents, ClientToServerEvents> | null =
     null;
-  private readonly baseUrl: string;
   // Coalesce concurrent ensureSubscribed() calls with identical args. React
   // StrictMode in dev double-invokes effect bodies, so without this we'd fire
   // POST /api/subscriptions twice on every symbol change. Keyed by the
   // sorted symbol set; cleared once the in-flight promise settles.
   private inflightSubs = new Map<string, Promise<SubscriptionsResponse>>();
 
-  constructor(baseUrl: string) {
-    this.baseUrl = baseUrl;
-  }
-
   /** Batched snapshot fetch. Errors throw ApiError + fire a toast. */
   async fetchQuotes(symbols: string[]): Promise<QuotesResponse> {
     const q = new URLSearchParams({
       symbols: symbols.map((s) => s.toUpperCase()).join(","),
     });
-    return api<QuotesResponse>(`${this.baseUrl}/api/quotes?${q}`);
+    return api<QuotesResponse>(`/api/quotes?${q}`);
   }
 
   /**
@@ -68,7 +66,7 @@ export class PriceClient {
       limit: String(limit),
     });
     if (opts?.feed) q.set("feed", opts.feed);
-    return api<BarsResponse>(`${this.baseUrl}/api/bars?${q}`);
+    return api<BarsResponse>(`/api/bars?${q}`);
   }
 
   /**
@@ -79,7 +77,7 @@ export class PriceClient {
    * surface a toast and reflect the actual active feed.
    */
   async setLiveFeed(feed: AlpacaFeed): Promise<LiveFeedResponse> {
-    return api<LiveFeedResponse>(`${this.baseUrl}/api/live-feed`, {
+    return api<LiveFeedResponse>("/api/live-feed", {
       method: "POST",
       body: JSON.stringify({ feed }),
     });
@@ -87,7 +85,7 @@ export class PriceClient {
 
   /** Read the currently active live WS feed. */
   async getLiveFeed(): Promise<LiveFeedResponse> {
-    return api<LiveFeedResponse>(`${this.baseUrl}/api/live-feed`);
+    return api<LiveFeedResponse>("/api/live-feed");
   }
 
   /**
@@ -98,7 +96,7 @@ export class PriceClient {
    */
   async lookupAsset(symbol: string): Promise<AssetLookupResponse> {
     const q = new URLSearchParams({ symbol: symbol.toUpperCase() });
-    return api<AssetLookupResponse>(`${this.baseUrl}/api/assets/lookup?${q}`);
+    return api<AssetLookupResponse>(`/api/assets/lookup?${q}`);
   }
 
   /**
@@ -113,7 +111,7 @@ export class PriceClient {
     const key = [...upper].sort().join(",");
     const existing = this.inflightSubs.get(key);
     if (existing) return existing;
-    const p = api<SubscriptionsResponse>(`${this.baseUrl}/api/subscriptions`, {
+    const p = api<SubscriptionsResponse>("/api/subscriptions", {
       method: "POST",
       body: JSON.stringify({ symbols: upper }),
     }).finally(() => {
@@ -127,7 +125,9 @@ export class PriceClient {
   connect(subs: PriceClientSubscribers): void {
     console.log("PriceClient.connect subs:\n" + dump(subs));
     if (this.socket) return;
-    const socket = io(this.baseUrl, {
+    // Empty / undefined URL → socket.io connects to the current page origin.
+    // The dev proxy and prod nginx both route /socket.io/ to the backend.
+    const socket = io({
       reconnection: true,
       reconnectionDelay: 2_000,
       timeout: 4_000,
@@ -147,7 +147,7 @@ export class PriceClient {
 }
 
 /** Module-level singleton — exactly one socket per tab. */
-export const priceClient = new PriceClient(config.backendUrl);
+export const priceClient = new PriceClient();
 
 // Re-export for callers that want the Quote type without a long path.
 export type { Quote, QuotesResponse };
