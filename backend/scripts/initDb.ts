@@ -71,6 +71,11 @@ async function main(): Promise<void> {
   } finally {
     await client.end();
   }
+
+  // Seed the demo user row so existing data (positions/orders/...) for the
+  // legacy hardcoded user id remains valid against the new FK.
+  const { seedDemoUser } = await import("./seedDemoUser");
+  await seedDemoUser();
 }
 
 main().catch((err) => {
