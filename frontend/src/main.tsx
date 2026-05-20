@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { Toaster, toast } from "react-hot-toast";
 import { configureApi, ErrorBoundary } from "@chongbei/web-basics/client";
 import "./index.css";
-import App from "./App.tsx";
+import { AuthBoot } from "./components/AuthBoot";
 
 // -----------------------------------------------------------------------------
 // App startup wiring for @chongbei/web-basics on the client:
@@ -26,7 +26,7 @@ configureApi({
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ErrorBoundary>
-      <App />
+      <AuthBoot />
       <Toaster position="top-right" />
     </ErrorBoundary>
   </StrictMode>,
