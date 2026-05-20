@@ -22,6 +22,8 @@ interface TopBarProps {
   liveFeed: "iex" | "sip" | null;
   user: AuthUser;
   readOnly: boolean;
+  /** Opens the mobile sidebar drawer. Only the burger button below 640px calls it. */
+  onOpenSidebar: () => void;
 }
 
 // Single place to compute what the top-right status indicator should show.
@@ -91,6 +93,7 @@ export function TopBar({
   liveFeed,
   user,
   readOnly,
+  onOpenSidebar,
 }: TopBarProps) {
   const showDemoCta = readOnly || user.isDemo;
   const statusPill = deriveStatusPill(
@@ -104,17 +107,25 @@ export function TopBar({
 
   return (
     <div className="topbar">
+      <button
+        className="topbar-burger"
+        type="button"
+        aria-label="Open menu"
+        onClick={onOpenSidebar}
+      >
+        <Icon name="menu" size={20} />
+      </button>
       <div className="brand">
         <div className="brand-mark">P</div>
         <span className="brand-text">Paper Trade Pro</span>
       </div>
 
       <div className="portfolio-summary">
-        <div className="ps-item">
+        <div className="ps-item ps-equity">
           <span className="ps-label">Portfolio</span>
           <span className="ps-value mono tnum">{fmtMoney(totalValue)}</span>
         </div>
-        <div className="ps-item">
+        <div className="ps-item ps-pct">
           <span className="ps-label">All-time</span>
           <span
             className={`ps-value mono tnum ${totalPct >= 0 ? "up" : "down"}`}
@@ -122,7 +133,7 @@ export function TopBar({
             {fmtPct(totalPct)}
           </span>
         </div>
-        <div className="ps-item">
+        <div className="ps-item ps-cash">
           <span className="ps-label">Cash</span>
           <span className="ps-value mono tnum">
             {fmtMoney(cash, { digits: 0 })}
@@ -136,7 +147,7 @@ export function TopBar({
           title={statusPill.title}
           style={{ cursor: "default" }}
         >
-          {statusPill.label}
+          <span className="status-pill-label">{statusPill.label}</span>
           {replaySimMs !== null && (
             <span
               className="mono tnum"
