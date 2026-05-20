@@ -29,6 +29,7 @@ import "./loggerBootstrap";
 import express from "express";
 import http from "http";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import { Server } from "socket.io";
 import {
   getLogger,
@@ -54,6 +55,12 @@ import { createQuotesRouter } from "./routes/quotes";
 import { createPortfolioRouter } from "./routes/portfolio";
 import { createMarketRouter } from "./routes/market";
 import { PortfolioStore } from "./store/PortfolioStore";
+import { createAuthRouter } from "./auth/routes";
+import {
+  requireAuth,
+  attachDemoUser,
+  readOnlyDemo,
+} from "./auth/middleware";
 
 // -----------------------------------------------------------------------------
 // Server entry point. Wires the provider, cache, stream hub, and REST routes
@@ -71,11 +78,23 @@ async function main(): Promise<void> {
   const cfg = loadConfig();
 
   const app = express();
-  app.use(cors({ origin: cfg.frontendOrigin }));
+  // Trust the X-Forwarded-Proto header from nginx so req.secure / Secure
+  // cookies behave correctly in production.
+  app.set("trust proxy", 1);
+  app.use(cors({ origin: cfg.frontendOrigin, credentials: true }));
   app.use(express.json());
+  app.use(cookieParser());
   // Install early so every route handler and service call downstream can emit
   // logs tagged with the request's `ref`.
   app.use(attachRef);
+
+  if (cfg.bypassAuth) {
+    log.warn(
+      { authOp: "bypass" },
+      "WARN BYPASS_AUTH=1 active — every request resolves to the demo user. " +
+        "Refused under NODE_ENV=production; harmless in dev.",
+    );
+  }
 
   const server = http.createServer(app);
   const io = new Server<ClientToServerEvents, ServerToClientEvents>(server, {
@@ -115,12 +134,40 @@ async function main(): Promise<void> {
     cfg.historySnapshotIntervalMs,
   );
   snapshotter.start();
+
+  // Auth routes — no requireAuth gate; these are how you obtain a session.
+  app.use("/api", createAuthRouter());
+
+  // Demo portfolio — same handlers, demo user, read-only enforcement.
+  // /api/demo/portfolio, /api/demo/orders, etc. Mount BEFORE the gated
+  // /api router so the more-specific prefix wins.
   app.use(
-    "/api",
+    "/api/demo",
+    attachDemoUser,
+    readOnlyDemo,
     createPortfolioRouter({
       store: portfolioStore,
       snapshotter,
-      getUserId: () => cfg.currentUserId,
+      getUserId: (req) => {
+        if (!req.user) throw new Error("attachDemoUser did not attach req.user");
+        return req.user.id;
+      },
+    }),
+  );
+
+  // Real-user portfolio. requireAuth attaches req.user.id; the router reads
+  // it via getUserId. When BYPASS_AUTH=1 is on (dev), requireAuth attaches
+  // the demo user and lets the request through.
+  app.use(
+    "/api",
+    requireAuth,
+    createPortfolioRouter({
+      store: portfolioStore,
+      snapshotter,
+      getUserId: (req) => {
+        if (!req.user) throw new Error("requireAuth did not attach req.user");
+        return req.user.id;
+      },
     }),
   );
 
