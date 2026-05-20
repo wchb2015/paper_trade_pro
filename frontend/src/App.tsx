@@ -4,6 +4,7 @@ import { Sidebar } from "./components/Sidebar";
 import { TweaksPanel } from "./components/TweaksPanel";
 import { PageRouter } from "./components/PageRouter";
 import { ModalStack } from "./components/ModalStack";
+import { PositionDetailDrawer } from "./components/PositionDetailDrawer";
 import { useMarket } from "./hooks/useMarket";
 import { useReplayClock } from "./hooks/useReplayClock";
 import { usePortfolio } from "./hooks/usePortfolio";
@@ -37,6 +38,7 @@ export default function App() {
   const [tradeCtx, setTradeCtx] = useState<TradeCtx | null>(null);
   const [alertCtx, setAlertCtx] = useState<AlertCtx | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [activeLotTicker, setActiveLotTicker] = useState<string | null>(null);
   const [tweaksOpen, setTweaksOpen] = useState(false);
   const [tweaks, setTweaks] = useState<Tweaks>(TWEAK_DEFAULTS);
 
@@ -160,6 +162,7 @@ export default function App() {
           setAlertCtx={setAlertCtx}
           onAddStock={() => setAddOpen(true)}
           liveFeed={liveFeed}
+          onOpenLots={setActiveLotTicker}
         />
       </main>
 
@@ -175,6 +178,14 @@ export default function App() {
         placeOrder={placeOrder}
         addAlert={addAlert}
         toggleWatch={toggleWatch}
+      />
+
+      <PositionDetailDrawer
+        ticker={activeLotTicker}
+        market={market}
+        portfolio={portfolio}
+        placeOrder={placeOrder}
+        onClose={() => setActiveLotTicker(null)}
       />
 
       {tweaksOpen && (
