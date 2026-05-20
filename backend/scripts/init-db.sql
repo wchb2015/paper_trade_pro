@@ -265,3 +265,52 @@ CREATE OR REPLACE TRIGGER equity_snapshots_set_updated_at
 
 CREATE INDEX IF NOT EXISTS equity_snapshots_user_taken_idx
   ON paper_trade_pro.equity_snapshots (user_id, taken_at ASC);
+
+-- =============================================================================
+-- Auth (added in Phase 1 — landing page + Google sign-in)
+-- =============================================================================
+
+-- -----------------------------------------------------------------------------
+-- users — one row per signed-in human (or the special demo user).
+-- google_sub is Google's stable subject id and is the natural unique key.
+-- email_lower is lowercased on the application side (upsertGoogleUser) for
+-- case-insensitive uniqueness.
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS paper_trade_pro.users (
+  id              UUID         PRIMARY KEY DEFAULT uuidv7(),
+  google_sub      TEXT         NOT NULL UNIQUE,
+  email           TEXT         NOT NULL,
+  email_lower     TEXT         NOT NULL UNIQUE,
+  name            TEXT,
+  picture_url     TEXT,
+  created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
+  last_login_at   TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
+CREATE OR REPLACE TRIGGER users_set_updated_at
+  BEFORE UPDATE ON paper_trade_pro.users
+  FOR EACH ROW EXECUTE FUNCTION paper_trade_pro.set_updated_at();
+
+-- -----------------------------------------------------------------------------
+-- sessions — server-side session store. id is a 256-bit random base64url
+-- string handed to the client as the ptp_sid cookie. ON DELETE CASCADE so
+-- removing a user nukes their sessions atomically.
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS paper_trade_pro.sessions (
+  id              TEXT         PRIMARY KEY,
+  user_id         UUID         NOT NULL REFERENCES paper_trade_pro.users(id) ON DELETE CASCADE,
+  created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
+  expires_at      TIMESTAMPTZ  NOT NULL,
+  last_seen_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
+CREATE OR REPLACE TRIGGER sessions_set_updated_at
+  BEFORE UPDATE ON paper_trade_pro.sessions
+  FOR EACH ROW EXECUTE FUNCTION paper_trade_pro.set_updated_at();
+
+CREATE INDEX IF NOT EXISTS sessions_user_idx
+  ON paper_trade_pro.sessions (user_id);
+CREATE INDEX IF NOT EXISTS sessions_expires_idx
+  ON paper_trade_pro.sessions (expires_at);
