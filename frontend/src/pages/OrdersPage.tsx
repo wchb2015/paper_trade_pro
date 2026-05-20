@@ -230,6 +230,7 @@ export function OrdersPage({
             }
           />
         ) : (
+          <div className="table-scroll">
           <table className="table">
             <thead>
               <tr>
@@ -323,6 +324,7 @@ export function OrdersPage({
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>

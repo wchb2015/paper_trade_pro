@@ -337,6 +337,7 @@ export function PortfolioPage({
               subtitle="Pick a symbol from your watchlist to place your first trade."
             />
           ) : (
+            <div className="table-scroll">
             <table className="table">
               <thead>
                 <tr>
@@ -405,6 +406,7 @@ export function PortfolioPage({
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       </div>
@@ -419,6 +421,7 @@ export function PortfolioPage({
               subtitle="Use the Trade button on any stock to open your first position."
             />
           ) : (
+            <div className="table-scroll">
             <table className="table">
               <thead>
                 <tr>
@@ -513,6 +516,7 @@ export function PortfolioPage({
                 })}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       )}
