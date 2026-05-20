@@ -23,8 +23,19 @@ export default defineConfig({
   server: {
     port: ports.FRONTEND_DEV_PORT,
     strictPort: true,
-  },
-  define: {
-    'import.meta.env.VITE_BACKEND_URL': JSON.stringify(ports.BACKEND_URL),
+    // -----------------------------------------------------------------------
+    // Same-origin in dev. Frontend client modules use relative URLs
+    // (e.g. '/api/portfolio'); Vite forwards them to the backend on
+    // ports.BACKEND_URL. This mirrors the prod nginx setup so OAuth
+    // cookies and CORS behave the same in both environments.
+    // -----------------------------------------------------------------------
+    proxy: {
+      '/api': { target: ports.BACKEND_URL, changeOrigin: true },
+      '/socket.io': {
+        target: ports.BACKEND_URL,
+        ws: true,
+        changeOrigin: true,
+      },
+    },
   },
 })
