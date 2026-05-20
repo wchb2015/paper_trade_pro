@@ -33,6 +33,7 @@ interface PageRouterProps {
   setAlertCtx: (ctx: AlertCtx | null) => void;
   onAddStock: () => void;
   liveFeed: "iex" | "sip" | null;
+  onOpenLots: (ticker: string) => void;
 }
 
 export function PageRouter(props: PageRouterProps) {
@@ -54,6 +55,7 @@ export function PageRouter(props: PageRouterProps) {
     setAlertCtx,
     onAddStock,
     liveFeed,
+    onOpenLots,
   } = props;
 
   switch (page) {
@@ -65,6 +67,7 @@ export function PageRouter(props: PageRouterProps) {
           valuation={valuation}
           onNavigate={onNavigate}
           setTradeCtx={setTradeCtx}
+          onOpenLots={onOpenLots}
         />
       );
     case "watchlist":
