@@ -134,6 +134,25 @@ export interface AppConfig {
    * write snapshots on demand. Default: 60_000 (one minute).
    */
   historySnapshotIntervalMs: number;
+  /**
+   * Google OAuth client. All three are *required* for `/api/auth/google/*`
+   * to work; if you don't have them yet, set BYPASS_AUTH=1 in dev to skip
+   * the flow entirely.
+   */
+  googleClientId: string | null;
+  googleClientSecret: string | null;
+  googleRedirectUri: string | null;
+  /**
+   * Session cookie & lifetime. These have safe defaults — override only
+   * when you know why.
+   */
+  sessionCookieName: string;
+  sessionLifetimeMs: number;
+  /**
+   * Dev-only escape hatch. When true, requireAuth attaches the demo user
+   * instead of looking up a session. Refused under NODE_ENV=production.
+   */
+  bypassAuth: boolean;
   /** Re-exported for convenience so consumers don't double-import. */
   limits: typeof FREE_TIER;
 }
@@ -150,6 +169,15 @@ export function loadConfig(): AppConfig {
 
   const provider = parseProvider(optionalEnv("PRICE_PROVIDER"));
   const feed = parseFeed(optionalEnv("ALPACA_FEED"));
+
+  const isProd = process.env.NODE_ENV === "production";
+  const bypassAuth = (optionalEnv("BYPASS_AUTH") ?? "0") === "1";
+  if (bypassAuth && isProd) {
+    throw new Error(
+      "FATAL: BYPASS_AUTH=1 refused under NODE_ENV=production. " +
+        "Remove it from prod env or unset NODE_ENV.",
+    );
+  }
 
   const cfg: AppConfig = {
     port: ports.BACKEND_PORT,
@@ -185,6 +213,14 @@ export function loadConfig(): AppConfig {
         optionalEnv("REPLAY_CACHE_DIR") ??
         path.join(resolveBackendDir(), ".replay-cache"),
     },
+    googleClientId: optionalEnv("GOOGLE_CLIENT_ID") ?? null,
+    googleClientSecret: optionalEnv("GOOGLE_CLIENT_SECRET") ?? null,
+    googleRedirectUri: optionalEnv("GOOGLE_REDIRECT_URI") ?? null,
+    sessionCookieName: optionalEnv("SESSION_COOKIE_NAME") ?? "ptp_sid",
+    sessionLifetimeMs: Number(
+      optionalEnv("SESSION_LIFETIME_MS") ?? 30 * 24 * 60 * 60 * 1000,
+    ),
+    bypassAuth,
   };
 
   cached = cfg;
