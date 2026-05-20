@@ -15,6 +15,7 @@ import { useThemeStyles } from "./hooks/useThemeStyles";
 import { countUnreadTriggered } from "./lib/alertsViewed";
 import type {
   AlertCtx,
+  AuthUser,
   Market,
   PageKey,
   Theme,
@@ -22,13 +23,18 @@ import type {
   Tweaks,
 } from "./lib/types";
 
+interface AppProps {
+  user: AuthUser;
+  readOnly: boolean;
+}
+
 const TWEAK_DEFAULTS: Tweaks = {
   accent: "#4f46e5",
   gainColor: "#059669",
   lossColor: "#e11d48",
 };
 
-export default function App() {
+export default function App({ user, readOnly }: AppProps) {
   const [theme, setTheme] = usePersistedState<Theme>("ptp_theme", "light");
   const [page, setPage] = usePersistedState<PageKey>("ptp_page_v2", "portfolio");
   const [activeTradeTicker, setActiveTradeTicker] = usePersistedState<string>(
@@ -132,6 +138,8 @@ export default function App() {
         replayClock={replayClock}
         replaySimMs={replaySimMs}
         liveFeed={liveFeed}
+        user={user}
+        readOnly={readOnly}
       />
 
       <Sidebar
