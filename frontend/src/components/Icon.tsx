@@ -15,7 +15,8 @@ export type IconName =
   | 'starFilled'
   | 'trash'
   | 'settings'
-  | 'refresh';
+  | 'refresh'
+  | 'menu';
 
 interface IconProps extends Omit<SVGProps<SVGSVGElement>, 'name'> {
   name: IconName;
@@ -105,6 +106,13 @@ const paths: Record<IconName, ReactNode> = {
       <polyline points="23 4 23 10 17 10" />
       <polyline points="1 20 1 14 7 14" />
       <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+    </>
+  ),
+  menu: (
+    <>
+      <line x1="3" y1="6" x2="21" y2="6" />
+      <line x1="3" y1="12" x2="21" y2="12" />
+      <line x1="3" y1="18" x2="21" y2="18" />
     </>
   ),
 };
