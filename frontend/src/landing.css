@@ -435,6 +435,10 @@
   .landing-nav { padding: 12px 18px; }
   .landing-nav-links { display: none; }
   .landing-nav-burger { display: inline-flex; }
+  /* Hide the inline Google CTA in the nav — the burger sheet has its own,
+     and the hero's CTAs are reachable with one scroll. Keeps the bar to
+     just brand + burger. */
+  .landing-nav-right .google-btn { display: none; }
   .landing-hero {
     padding: 32px 18px 24px;
     gap: 28px;
