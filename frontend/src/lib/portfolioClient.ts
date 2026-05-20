@@ -12,7 +12,6 @@ import type {
   ToggleWatchInput,
   TriggerAlertInput,
 } from "../../../shared/src";
-import { config } from "../config";
 
 // -----------------------------------------------------------------------------
 // Thin REST wrapper around the backend's /api portfolio endpoints. Every
@@ -23,52 +22,50 @@ import { config } from "../config";
 // throws an ApiError with `{ status, code, ref, message }` AND fires a toast
 // via the `configureApi` wiring in main.tsx. Callers catch to record the
 // message in local state but don't need to toast themselves.
+//
+// Same-origin: all paths are relative. See frontend/src/config.ts.
 // -----------------------------------------------------------------------------
-
-function url(path: string): string {
-  return `${config.backendUrl}${path}`;
-}
 
 export const portfolioClient = {
   get(): Promise<Portfolio> {
-    return api<Portfolio>(url("/api/portfolio"));
+    return api<Portfolio>("/api/portfolio");
   },
   getHistory(range: HistoryRange): Promise<PortfolioHistoryResponse> {
     return api<PortfolioHistoryResponse>(
-      url(`/api/portfolio/history?range=${encodeURIComponent(range)}`),
+      `/api/portfolio/history?range=${encodeURIComponent(range)}`,
     );
   },
   placeOrder(body: PlaceOrderInput): Promise<Order> {
-    return api<Order>(url("/api/orders"), {
+    return api<Order>("/api/orders", {
       method: "POST",
       body: JSON.stringify(body),
     });
   },
   cancelOrder(id: string): Promise<Portfolio> {
-    return api<Portfolio>(url(`/api/orders/${encodeURIComponent(id)}/cancel`), {
+    return api<Portfolio>(`/api/orders/${encodeURIComponent(id)}/cancel`, {
       method: "POST",
     });
   },
   fillOrder(id: string, body: FillOrderInput): Promise<Portfolio> {
-    return api<Portfolio>(url(`/api/orders/${encodeURIComponent(id)}/fill`), {
+    return api<Portfolio>(`/api/orders/${encodeURIComponent(id)}/fill`, {
       method: "POST",
       body: JSON.stringify(body),
     });
   },
   addAlert(body: AddAlertInput): Promise<Portfolio> {
-    return api<Portfolio>(url("/api/alerts"), {
+    return api<Portfolio>("/api/alerts", {
       method: "POST",
       body: JSON.stringify(body),
     });
   },
   toggleAlert(id: string): Promise<Portfolio> {
-    return api<Portfolio>(url(`/api/alerts/${encodeURIComponent(id)}/toggle`), {
+    return api<Portfolio>(`/api/alerts/${encodeURIComponent(id)}/toggle`, {
       method: "POST",
     });
   },
   triggerAlert(id: string, body: TriggerAlertInput): Promise<Portfolio> {
     return api<Portfolio>(
-      url(`/api/alerts/${encodeURIComponent(id)}/trigger`),
+      `/api/alerts/${encodeURIComponent(id)}/trigger`,
       {
         method: "POST",
         body: JSON.stringify(body),
@@ -76,18 +73,18 @@ export const portfolioClient = {
     );
   },
   removeAlert(id: string): Promise<Portfolio> {
-    return api<Portfolio>(url(`/api/alerts/${encodeURIComponent(id)}`), {
+    return api<Portfolio>(`/api/alerts/${encodeURIComponent(id)}`, {
       method: "DELETE",
     });
   },
   toggleWatch(body: ToggleWatchInput): Promise<Portfolio> {
-    return api<Portfolio>(url("/api/watchlist/toggle"), {
+    return api<Portfolio>("/api/watchlist/toggle", {
       method: "POST",
       body: JSON.stringify(body),
     });
   },
   reset(body: ResetFundsInput = {}): Promise<OkResponse> {
-    return api<OkResponse>(url("/api/portfolio/reset"), {
+    return api<OkResponse>("/api/portfolio/reset", {
       method: "POST",
       body: JSON.stringify(body),
     });
