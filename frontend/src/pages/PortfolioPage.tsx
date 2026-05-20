@@ -21,6 +21,8 @@ interface PortfolioPageProps {
   valuation: Valuation;
   onNavigate: (page: PageKey, ticker?: string) => void;
   setTradeCtx: (ctx: TradeCtx | null) => void;
+  /** Open the per-ticker lot drawer (replaces the old "click symbol → Trade page" nav). */
+  onOpenLots: (ticker: string) => void;
 }
 
 export function PortfolioPage({
@@ -29,6 +31,7 @@ export function PortfolioPage({
   valuation,
   onNavigate,
   setTradeCtx,
+  onOpenLots,
 }: PortfolioPageProps) {
   const { cash, initialCash, positions } = portfolio;
   const totalValue = valuation.equity;
@@ -351,7 +354,13 @@ export function PortfolioPage({
                 {previewPositions.map(({ p, m, mkt, pnl, pnlPct }) => (
                   <tr key={p.id}>
                     <td>
-                      <div className="ticker">{p.ticker}</div>
+                      <div
+                        className="ticker"
+                        onClick={() => onOpenLots(p.ticker)}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        {p.ticker}
+                      </div>
                     </td>
                     <td>
                       <span className={`pill ${p.side}`}>
@@ -439,7 +448,7 @@ export function PortfolioPage({
                       <td>
                         <div
                           className="ticker"
-                          onClick={() => onNavigate('trade', p.ticker)}
+                          onClick={() => onOpenLots(p.ticker)}
                           style={{ cursor: 'pointer' }}
                         >
                           {p.ticker}
