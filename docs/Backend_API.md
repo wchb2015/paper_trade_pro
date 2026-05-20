@@ -1,36 +1,95 @@
 # Backend API
 
-All routes are mounted under `/api`. Backend listens on `BACKEND_PORT=5010` (`ports.cjs:16`), so the base URL in dev is `http://localhost:5010/api`.
+All routes are mounted under `/api`. Backend listens on `BACKEND_PORT=5010` (`ports.cjs:16`). In dev the browser talks to **`http://localhost:5011/api/...`** — Vite's dev proxy forwards `/api/*` and `/socket.io/*` to the backend on `:5010` so cookies and CORS behave like prod (where nginx does the same). Direct backend calls to `:5010` still work but are not how the frontend actually uses the API. See `docs/Local_Dev.md` and `docs/Google_Auth.md` for the full setup.
 
 ## Conventions
 
-- **Auth**: pre-auth — every request is mapped to `cfg.currentUserId` server-side (`backend/src/server.ts`). No headers required today.
-- **Content-Type**: `application/json` on every POST. `express.json()` middleware in `server.ts`.
-- **CORS**: allows `cfg.frontendOrigin` only.
-- **Errors**: shape is `{ "error": "<message>" }` with `400` for client-correctable problems (invalid enum, missing field, "not found") and `500`/`502` for server/provider failures. Final safety net `errorHandler` returns `{ error: { code, message, ref } }` for anything that escapes a route's try/catch.
+- **Auth**: every authenticated route is gated by `requireAuth` (`backend/src/auth/middleware.ts`) which reads the `ptp_sid` cookie, joins `paper_trade_pro.sessions` + `paper_trade_pro.users`, and attaches `req.user`. Routes read `getUserId(req) = req.user.id`. Sign-in lives at `GET /api/auth/google/start` and the cookie is set by `GET /api/auth/google/callback`. The OAuth + session story is documented end-to-end in [`docs/Google_Auth.md`](./Google_Auth.md).
+
+  Demo mode: every gated route also exists under the **`/api/demo/*`** prefix, where `attachDemoUser` injects the seeded demo user (UUID `3f7c9b2e-…`) and `readOnlyDemo` 403s any non-`GET`/`HEAD`/`OPTIONS` request with `{"error":{"code":"demo_readonly","message":"Sign in to trade."}}`. Reads work without a cookie; mutations don't.
+
+  Dev escape hatch: `BYPASS_AUTH=1` in `.env` makes `requireAuth` attach the demo user instead of looking up a session. Refused under `NODE_ENV=production`.
+
+- **Content-Type**: `application/json` on every POST. `express.json()` middleware in `server.ts`. Cookies are parsed by `cookie-parser`, also installed in `server.ts`.
+- **CORS**: allows `cfg.frontendOrigin` with `credentials: true`. In production the SPA and API are same-origin so CORS is effectively a no-op anyway.
+- **Errors**: shape is `{ "error": "<message>" }` with `400` for client-correctable problems (invalid enum, missing field, "not found") and `500`/`502` for server/provider failures. Auth failures use `{ "error": { "code": "<slug>" } }`. Final safety net `errorHandler` returns `{ error: { code, message, ref } }` for anything that escapes a route's try/catch.
 - **Portfolio mutations** return the **full refreshed `Portfolio`** so the client can replace state in one shot — **except**:
   - `POST /api/orders` returns just the new `Order`. The client refetches `GET /api/portfolio` afterwards to refresh `cash` / `positions`. Each route owns one concern.
   - `POST /api/portfolio/reset` returns `{ ok: true }` on success (or `{ error }` on failure). The client refetches `GET /api/portfolio` afterwards.
 
   The equity-snapshotter is invoked in the background after fills/resets so the chart picks up the change.
-- **Tracing**: every request gets a short `ref` id via `attachRef` middleware; look it up in pino logs to trace one request end-to-end.
+- **Tracing**: every request gets a short `ref` id via `attachRef` middleware; look it up in pino logs to trace one request end-to-end. Auth-flow log lines are additionally tagged with `authOp ∈ {start, callback, me, logout, bypass, requireAuth, demo_attach, readonly_block}`.
 
 ## API surface at a glance
 
-| Category | Endpoints | Purpose |
-|---|---|---|
-| [Quotes](#1-quotes) | `GET /quotes`, `GET /bars` | Snapshot prices and historical bars |
-| [Assets](#2-assets) | `GET /assets/lookup` | Validate / resolve a ticker symbol |
-| [Subscriptions](#3-subscriptions) | `GET /subscriptions`, `POST /subscriptions` | Manage which symbols stream over WS |
-| [Health](#4-health) | `GET /health` | Liveness + provider status |
-| [Portfolio reads](#5-portfolio-reads) | `GET /portfolio`, `GET /portfolio/history` | Full portfolio snapshot + equity history for the dashboard chart |
-| [Orders](#6-orders) | `POST /orders`, `POST /orders/:id/cancel`, `POST /orders/:id/fill`, `POST /orders/:id/peak` | Place, cancel, fill, and trail working orders |
-| [Alerts](#7-alerts) | `POST /alerts`, `POST /alerts/:id/toggle`, `POST /alerts/:id/trigger`, `DELETE /alerts/:id` | Price-cross alerts |
-| [Watchlist](#8-watchlist) | `POST /watchlist/toggle` | Add/remove a ticker from the user's watchlist |
-| [Account](#9-account) | `POST /portfolio/reset` | Dev-only: restart the account (wipes positions/orders/history; keeps alerts + watchlist) |
-| [Realtime](#10-realtime-socketio) | Socket.io | Push price ticks + provider-status changes |
+| Category | Endpoints | Purpose | Auth |
+|---|---|---|---|
+| [Auth](#0-auth) | `GET /auth/google/start`, `GET /auth/google/callback`, `GET /auth/me`, `POST /auth/logout` | Google sign-in, session lookup, sign-out | none |
+| [Quotes](#1-quotes) | `GET /quotes`, `GET /bars` | Snapshot prices and historical bars | none |
+| [Assets](#2-assets) | `GET /assets/lookup` | Validate / resolve a ticker symbol | none |
+| [Subscriptions](#3-subscriptions) | `GET /subscriptions`, `POST /subscriptions` | Manage which symbols stream over WS | none |
+| [Health](#4-health) | `GET /health` | Liveness + provider status | none |
+| [Portfolio reads](#5-portfolio-reads) | `GET /portfolio`, `GET /portfolio/history` | Full portfolio snapshot + equity history for the dashboard chart | **`requireAuth`** (or `/api/demo/*`) |
+| [Orders](#6-orders) | `POST /orders`, `POST /orders/:id/cancel`, `POST /orders/:id/fill`, `POST /orders/:id/peak` | Place, cancel, fill, and trail working orders | **`requireAuth`** (mutations rejected on `/api/demo/*`) |
+| [Alerts](#7-alerts) | `POST /alerts`, `POST /alerts/:id/toggle`, `POST /alerts/:id/trigger`, `DELETE /alerts/:id` | Price-cross alerts | **`requireAuth`** (mutations rejected on `/api/demo/*`) |
+| [Watchlist](#8-watchlist) | `POST /watchlist/toggle` | Add/remove a ticker from the user's watchlist | **`requireAuth`** (mutations rejected on `/api/demo/*`) |
+| [Account](#9-account) | `POST /portfolio/reset` | Dev-only: restart the account (wipes positions/orders/history; keeps alerts + watchlist) | **`requireAuth`** (rejected on `/api/demo/*`) |
+| [Realtime](#10-realtime-socketio) | Socket.io | Push price ticks + provider-status changes | none (subscription set is per-process) |
 
 > **Read this column carefully:** "When called" tells you which UI surface or hook triggers each endpoint. If you change a route, search the named call sites first to understand the blast radius.
+
+---
+
+## 0. Auth
+
+Source: `backend/src/auth/routes.ts`. Middleware: `backend/src/auth/middleware.ts`. End-to-end documentation including data model, debugging, and Google Cloud Console setup lives in [`docs/Google_Auth.md`](./Google_Auth.md).
+
+### `GET /api/auth/google/start`
+
+| | |
+|---|---|
+| **Purpose** | Begin the OAuth flow. Sets a CSRF state cookie (`ptp_oauth_state`, 10-min TTL) and 302s to Google's authorize URL with `scope=openid email profile`. |
+| **Method** | `GET` (so it can be the target of a top-level navigation; can't be a `fetch` because Google needs a real browser redirect). |
+| **Input** | none |
+| **Response 302** | `Location: https://accounts.google.com/o/oauth2/v2/auth?...` + `Set-Cookie: ptp_oauth_state=<…>` |
+| **Response 302 (misconfigured)** | `Location: /?error=auth_misconfig&ref=<id>` if `GOOGLE_CLIENT_ID` is unset. Logs at `ERROR` with `authOp: "start"`. |
+| **When called** | The `<a href="/api/auth/google/start">` rendered by `frontend/src/landing/GoogleButton.tsx`. |
+| **curl** | `curl -i http://localhost:5011/api/auth/google/start` (expect a 302; follow with `-L` to walk through Google) |
+
+### `GET /api/auth/google/callback`
+
+| | |
+|---|---|
+| **Purpose** | Consume Google's `?code=&state=`, verify the ID token, upsert into `users`, create a row in `sessions`, set the `ptp_sid` cookie, redirect to `/app`. |
+| **Method** | `GET` (Google always redirects with GET) |
+| **Input (query)** | `code`, `state`. Or `error=access_denied` if user clicked Cancel at Google. |
+| **Input (cookie)** | `ptp_oauth_state` (httpOnly, set by `/start`) — must equal the `state` query param. |
+| **Response 302 (success)** | `Set-Cookie: ptp_sid=<base64url-256-bit>; HttpOnly; SameSite=Lax; Path=/; Expires=<+30d>` (and `Secure` in prod) + `Location: /app`. The state cookie is cleared. |
+| **Response 302 (error)** | `Location: /?error=<code>&ref=<request-ref>` for `auth_state` (state mismatch / missing), `auth_verify` (ID-token verify failed), `auth_db` (Postgres write failed), `auth_cancelled` (user cancelled at Google). State cookie always cleared. |
+| **Frontend handler** | `frontend/src/landing/LandingPage.tsx` reads `?error=` on mount and renders the red banner; cancel is silent (no banner). |
+
+### `GET /api/auth/me`
+
+| | |
+|---|---|
+| **Purpose** | "Am I signed in?" Polled at app boot by `AuthBoot`. Never returns 5xx — transient flakes return 401 too, so the boot path falls through to landing instead of breaking. |
+| **Input (cookie)** | `ptp_sid` (optional) |
+| **Response 200** | `{ "user": { "id":"…", "email":"…", "name":"…", "pictureUrl":"…", "isDemo":false } }` |
+| **Response 401** | `{ "error": { "code": "unauthenticated" } }` — *expected* on every cold visit; the frontend treats this as "show landing page". |
+| **`BYPASS_AUTH=1`** | Returns the demo user as if signed in. |
+| **When called** | `fetchMe()` in `frontend/src/lib/auth.ts`, called by `AuthBoot` (`frontend/src/components/AuthBoot.tsx`) on mount. |
+| **curl** | `curl -i http://localhost:5011/api/auth/me` (expect 401 without cookie); with cookie: `curl --cookie 'ptp_sid=<sid>' http://localhost:5011/api/auth/me`. |
+
+### `POST /api/auth/logout`
+
+| | |
+|---|---|
+| **Purpose** | Delete the session row, clear the cookie. |
+| **Input (cookie)** | `ptp_sid` |
+| **Response 200** | `{ "ok": true }` |
+| **Response 500** | `{ "error": { "code": "logout_failed" } }`. Cookie is cleared anyway via `Set-Cookie`; the user is never stuck signed in. |
+| **Side effects** | `DELETE FROM paper_trade_pro.sessions WHERE id = ptp_sid` |
+| **When called** | `signOut()` in `frontend/src/lib/auth.ts`, triggered by the sign-out button in `TopBar`. After the response the frontend hard-reloads to `/`. |
 
 ---
 
@@ -139,7 +198,7 @@ Source: `backend/src/routes/portfolio.ts`. Schemas: `shared/src/contracts/portfo
 | | |
 |---|---|
 | **Purpose** | Time-series of equity samples for the dashboard's "Portfolio value" chart. Backed by `paper_trade_pro.equity_snapshots`, written by the in-process `EquitySnapshotter` (every `EQUITY_SNAPSHOT_INTERVAL_MS=60s` by default) and on-demand after every fill/reset. |
-| **Required** | `range` query — one of `1M`, `3M`, `YTD`, `ALL` (validated by `isHistoryRange`; see `shared/src/contracts/portfolio.ts`) |
+| **Required** | `range` query — one of `1D`, `1W`, `1M`, `3M`, `YTD`, `ALL` (validated by `isHistoryRange`; see `shared/src/contracts/portfolio.ts`) |
 | **Response 200** | `{ "range": "1M", "points": [{ "t": 1715000000000, "p": 100023.45 }, …] }` (`t` epoch-ms UTC, `p` equity in dollars; ordered ASC) |
 | **Response 400** | `{ "error":"invalid range \"<value>\"" }` |
 | **When called** | `portfolioClient.getHistory` — invoked by `DashboardPage` (`frontend/src/pages/DashboardPage.tsx:45`) on mount and every time the user clicks one of the **1M / 3M / YTD / ALL** segmented buttons. The page also appends a synthetic "now" point client-side so the right edge of the line stays current between snapshots. |
@@ -273,6 +332,27 @@ Source: `backend/src/routes/portfolio.ts`. Schemas: `shared/src/contracts/portfo
 
 ---
 
+## 9b. Demo prefix (`/api/demo/*`)
+
+Every authenticated route that exists under `/api/<…>` also exists under `/api/demo/<…>`. The demo prefix is mounted **before** the gated `/api/*` so the more-specific path wins (`backend/src/server.ts:130-ish`):
+
+```ts
+app.use('/api/demo', attachDemoUser, readOnlyDemo, createPortfolioRouter({…}));
+app.use('/api',     requireAuth,    createPortfolioRouter({…}));
+```
+
+| | |
+|---|---|
+| **Auth** | None. `attachDemoUser` injects `req.user = <seeded demo user>` for every request. |
+| **Reads** | All `GET`/`HEAD`/`OPTIONS` succeed normally — e.g. `GET /api/demo/portfolio`, `GET /api/demo/portfolio/history?range=1M`. |
+| **Mutations** | All non-`GET` methods are 403'd by `readOnlyDemo` with `{"error":{"code":"demo_readonly","message":"Sign in to trade."}}`. The handlers never run. |
+| **Demo user** | UUID `3f7c9b2e-8a41-4d6c-b5f3-1e9a72c4d8ab`, `google_sub='demo'`, seeded at `db:init`. Same UUID the pre-auth app used as `cfg.currentUserId`, so legacy positions/orders/alerts/watchlist FK-cleanly. |
+| **Frontend** | `AuthBoot` mounts `<App user={DEMO_USER} readOnly />` for unauthenticated visits to `/demo`, which routes mutations through `/api/demo/*`. Mutating UI is intentionally **not disabled** — clicking surfaces the toast. |
+| **curl read** | `curl http://localhost:5011/api/demo/portfolio` → 200 |
+| **curl mutation** | `curl -X POST -H 'Content-Type: application/json' -d '{}' http://localhost:5011/api/demo/portfolio/reset` → 403 |
+
+---
+
 ## 10. Realtime (Socket.io)
 
 Same origin/port as the REST API (Socket.io is mounted on the HTTP server in `backend/src/server.ts`). Event names are constants in `shared/src/contracts/events.ts`.
@@ -342,6 +422,6 @@ Validated at the route boundary by the runtime guards in `shared/src/contracts/p
 | `TimeInForce` | `day` · `gtc` · `ioc` |
 | `AlertCondition` | `above` · `below` |
 | `ConditionalOp` | `>=` · `<=` |
-| `HistoryRange` | `1M` · `3M` · `YTD` · `ALL` |
+| `HistoryRange` | `1D` · `1W` · `1M` · `3M` · `YTD` · `ALL` |
 
 Timestamps over the wire are **epoch milliseconds** (numbers). The DB stores `timestamptz`; conversion happens at the SQL boundary.
