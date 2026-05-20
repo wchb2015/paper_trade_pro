@@ -864,8 +864,8 @@ textarea:focus {
   }
 }
 
-/* responsive */
-@media (max-width: 1100px) {
+/* responsive — sidebar collapses to icons; portfolio summary becomes compact */
+@media (max-width: 900px) {
   .app {
     grid-template-columns: 64px 1fr;
   }
@@ -897,10 +897,17 @@ textarea:focus {
   .grid-2 {
     grid-template-columns: 1fr;
   }
+  /* Compact summary at 640–899px: equity + day P/L only. The full 3-cell
+     summary returns at >=900px. */
   .portfolio-summary {
-    display: none;
+    gap: 10px;
+    padding: 0 8px;
   }
+  .portfolio-summary .ps-item.ps-cash { display: none; }
 }
+
+/* Burger button is hidden by default; <640px brings it back. */
+.topbar-burger { display: none; }
 @media (max-width: 640px) {
   .main {
     padding: 16px;
@@ -914,6 +921,103 @@ textarea:focus {
   .wl-row .hide-sm {
     display: none;
   }
+
+  /* App shell — sidebar drawer mode */
+  .app {
+    grid-template-columns: 1fr;
+  }
+  .sidebar {
+    position: fixed;
+    top: 56px;
+    left: 0;
+    width: 260px;
+    max-width: 80vw;
+    height: calc(100vh - 56px);
+    background: var(--bg-elev);
+    border-right: 1px solid var(--border);
+    transform: translateX(-105%);
+    transition: transform 0.18s ease-out;
+    z-index: 60;
+    box-shadow: var(--shadow-lg);
+  }
+  .sidebar.open { transform: translateX(0); }
+  .sidebar-backdrop {
+    position: fixed;
+    top: 56px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.32);
+    z-index: 55;
+    animation: fadeIn 0.15s ease-out;
+  }
+  /* Sidebar nav-items inside the drawer get full labels back. */
+  .sidebar.open .nav-item { justify-content: flex-start; padding: 10px 14px; }
+  .sidebar.open .nav-item span:not(.badge) { display: inline; }
+  .sidebar.open .nav-group-label { display: block; }
+  .sidebar.open .nav-item .badge { display: inline-flex; }
+
+  /* Burger button in the topbar (only visible <640px) */
+  .topbar-burger {
+    display: inline-flex;
+    width: 40px;
+    height: 40px;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    background: transparent;
+    border: 1px solid var(--border);
+    margin-right: 6px;
+  }
+  .topbar-burger:hover { background: var(--bg-hover); }
+
+  /* Compact summary collapses to a single chip below 640px. */
+  .portfolio-summary {
+    border: none;
+    padding: 0;
+    height: auto;
+    gap: 0;
+  }
+  .portfolio-summary .ps-item.ps-pct { display: none; }
+  .portfolio-summary .ps-label { display: none; }
+  .portfolio-summary .ps-item .ps-value { font-size: 13px; }
+
+  /* Status pill — keep just the dot at <640px (verbose label hidden). */
+  .top-actions .status-pill-label { display: none; }
+
+  /* Touch targets ≥ 40px */
+  .btn.sm { min-height: 40px; padding: 6px 12px; }
+  .nav-item { min-height: 40px; }
+  .btn.icon-only { min-width: 40px; min-height: 40px; }
+  .qf-chip { min-height: 32px; padding: 6px 12px; }
+}
+
+/* <480px edge cases: 4-up stats → 1-up, OrdersPage date stack */
+@media (max-width: 480px) {
+  .stat-grid { grid-template-columns: 1fr; }
+  .orders-shelf-dates { flex-direction: column; align-items: stretch; }
+  .orders-shelf-dates .input { width: 100%; }
+}
+
+/* Wrap any .table in .table-scroll for graceful horizontal overflow on
+   narrow viewports. Right-edge gradient hints at scrollability without
+   being noisy. */
+.table-scroll {
+  position: relative;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.table-scroll::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 24px;
+  height: 100%;
+  pointer-events: none;
+  background: linear-gradient(to right, transparent, var(--bg-elev));
+  opacity: 0.85;
 }
 
 /* TradePage rail layout */
