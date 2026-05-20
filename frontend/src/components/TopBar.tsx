@@ -1,6 +1,8 @@
 import { Icon } from "./Icon";
 import { fmtMoney, fmtPct } from "../lib/format";
-import type { Portfolio, Theme } from "../lib/types";
+import { GoogleButton } from "../landing/GoogleButton";
+import { signOut } from "../lib/auth";
+import type { AuthUser, Portfolio, Theme } from "../lib/types";
 import type { ReplayClockAnchor } from "../hooks/useMarket";
 
 interface TopBarProps {
@@ -18,6 +20,8 @@ interface TopBarProps {
   replayClock: ReplayClockAnchor | null;
   replaySimMs: number | null;
   liveFeed: "iex" | "sip" | null;
+  user: AuthUser;
+  readOnly: boolean;
 }
 
 // Single place to compute what the top-right status indicator should show.
@@ -85,7 +89,10 @@ export function TopBar({
   replayClock,
   replaySimMs,
   liveFeed,
+  user,
+  readOnly,
 }: TopBarProps) {
+  const showDemoCta = readOnly || user.isDemo;
   const statusPill = deriveStatusPill(
     liveConnected,
     provider,
@@ -168,6 +175,18 @@ export function TopBar({
             }}
           />
         </span>
+        {showDemoCta ? (
+          <GoogleButton label="Sign in" />
+        ) : (
+          <button
+            className="btn ghost icon-only"
+            onClick={() => void signOut()}
+            title={`Sign out (${user.email})`}
+            aria-label="Sign out"
+          >
+            <Icon name="account" size={16} />
+          </button>
+        )}
         <button
           className="btn ghost icon-only"
           onClick={onOpenTweaks}
