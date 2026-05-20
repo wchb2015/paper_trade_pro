@@ -44,6 +44,9 @@ to the backend.
    tablet / phone.
 5. Deployment doc + nginx config example so the eventual prod cutover is
    mechanical.
+6. Local dev keeps working with **just `npm run dev`** — no nginx, no
+   TLS, no Docker. Google sign-in must work end-to-end against
+   `http://localhost:5011`.
 
 ## Non-goals
 
@@ -276,17 +279,27 @@ progressive enhancement without throwing this away.
 # Required
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
-GOOGLE_REDIRECT_URI=http://localhost:5010/api/auth/google/callback
+GOOGLE_REDIRECT_URI=http://localhost:5011/api/auth/google/callback
 
 # Optional with defaults
 SESSION_COOKIE_NAME=ptp_sid
 SESSION_LIFETIME_MS=2592000000   # 30 days
+
+# Dev-only escape hatch (refused in production)
+# BYPASS_AUTH=1                   # see §5.0 step 8
 ```
+
+The default `GOOGLE_REDIRECT_URI` points at **`:5011`** (the Vite dev
+server), not `:5010` (the backend), because in local dev the browser
+hits the SPA origin and Vite proxies `/api` to the backend. Same-origin
+end-to-end.
 
 Documented in `.env.example` with the same Reference treatment as the
 existing block. In production behind nginx, `GOOGLE_REDIRECT_URI` becomes
 `https://papertrade.pro/api/auth/google/callback` — same origin as the
-SPA, so the session cookie is first-party.
+SPA, so the session cookie is first-party. Both URLs must be registered
+as authorized redirect URIs on the Google Cloud Console OAuth client (see
+§5.0 step 4).
 
 ### 4.4 New backend routes
 
@@ -344,23 +357,145 @@ mutating handler having to remember to check.
 ```
 Name:      ptp_sid
 HttpOnly:  yes
-Secure:    yes in prod (req.secure), off in dev
-SameSite:  Lax
+Secure:    yes in prod, no in dev (HTTPS not available on localhost)
+SameSite:  Lax (both prod and dev — Vite proxy keeps everything same-site)
 Path:      /
 Max-Age:   30 days
 ```
 
-The `Secure` flag relies on `app.set('trust proxy', 1)` so
-`X-Forwarded-Proto` from nginx is honoured.
+`Secure` is gated on `process.env.NODE_ENV === 'production'`, not on
+`req.secure`, so dev (plain HTTP `localhost`) gets a cookie that the
+browser will actually accept. In prod, `app.set('trust proxy', 1)` lets
+Express honour `X-Forwarded-Proto` from nginx; the `Secure` flag is set
+unconditionally there.
 
 Sliding expiration: every authenticated request bumps
 `sessions.last_seen_at`; a daily cron deletes
 `sessions.expires_at < now()`. Cron is not in v1; the schema is ready
 for it.
 
-## 5. Deployment (nginx + pm2)
+## 5. Deployment & local development
 
-### 5.1 Process layout
+### 5.0 Local dev (no nginx, no TLS)
+
+The local dev story has to be exactly **`npm run dev` and go**, even though
+production needs nginx for same-origin cookies and SPA fallback. We solve
+this by mirroring nginx's role with Vite's dev proxy: the browser talks
+*only* to `http://localhost:5011` (the Vite dev server), which forwards
+`/api/*` and `/socket.io/*` to the backend on `:5010`. Net effect:
+same-origin in dev, same-origin in prod, no client code branches.
+
+**1. Frontend talks same-origin in dev**
+
+Drop the cross-origin URL injection. `frontend/src/config.ts` becomes:
+
+```ts
+// In dev, omit the host: relative URLs ride on the Vite proxy.
+// In prod, omit the host: nginx serves the SPA and proxies /api itself.
+export const config = {
+  backendUrl: '',           // was: import.meta.env.VITE_BACKEND_URL
+  ...
+};
+```
+
+`marketClient.ts`, `portfolioClient.ts`, `priceClient.ts` then call
+`/api/portfolio/...` instead of `${backendUrl}/api/portfolio/...`. They
+already prefix paths with `/api`, so this is a 1-line change in each
+client.
+
+**2. Vite dev-server proxy** — append to `frontend/vite.config.ts`:
+
+```ts
+server: {
+  port: ports.FRONTEND_DEV_PORT,
+  strictPort: true,
+  proxy: {
+    '/api':       { target: ports.BACKEND_URL, changeOrigin: true },
+    '/socket.io': { target: ports.BACKEND_URL, ws: true, changeOrigin: true },
+  },
+},
+```
+
+**3. Cookie attributes in dev**
+
+`Secure` cookies require HTTPS, which we don't have on `localhost`.
+The cookie code reads `app.get('env') === 'production'` and falls back to
+**`Secure: false; SameSite: Lax`** in dev. `SameSite=Lax` is fine because
+both Google's redirect-back and our XHRs are same-site once the proxy
+fronts everything.
+
+**4. Google Cloud Console — local credentials**
+
+Add **two** authorized redirect URIs to the OAuth client in Google Cloud
+Console:
+
+```
+http://localhost:5011/api/auth/google/callback     # dev (via Vite proxy)
+https://papertrade.pro/api/auth/google/callback    # prod
+```
+
+Google's docs allow `http://` for `localhost` only (it's the documented
+exception to the HTTPS-only rule). The callback URL the backend hands to
+Google is read from `GOOGLE_REDIRECT_URI` — set it to the `:5011` host in
+local `.env`, the prod host in prod `.env`. Same code, different env.
+
+**5. One-command start**
+
+Add to root `package.json`:
+
+```json
+{
+  "scripts": {
+    "dev": "concurrently -k -n be,fe -c blue,green \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\""
+  },
+  "devDependencies": { "concurrently": "^9" }
+}
+```
+
+Then:
+
+```bash
+npm install                                  # one time
+npm run dev                                  # spawns backend + frontend
+open http://localhost:5011                   # everything works here
+```
+
+**6. Local Google sign-in flow (sanity check)**
+
+```
+http://localhost:5011/                       (Vite SPA)
+  click "Sign in with Google"
+http://localhost:5011/api/auth/google/start  (Vite proxies → :5010)
+  302 → accounts.google.com/o/oauth2/v2/auth?...
+        redirect_uri=http://localhost:5011/api/auth/google/callback
+  user consents
+http://localhost:5011/api/auth/google/callback?code&state
+  (Vite proxies → :5010, backend verifies, sets cookie on :5011)
+  302 → http://localhost:5011/app
+```
+
+The cookie's domain is `localhost`, the user's browser is on
+`http://localhost:5011`, the API is reached via `http://localhost:5011/api`.
+Same origin everywhere — no third-party-cookie problems, no CORS dance.
+
+**7. Local-dev README**
+
+`deploy/README.md` ships the prod story. Local-dev steps go in **a new
+top-level `docs/Local_Dev.md`** (sibling to `Backend_API.md` / `ENV.md`),
+covering: clone, `.env`, Postgres URL (Neon dev branch), Google OAuth
+client creation with the two redirect URIs above, and the
+`npm run dev` cycle. The `.env.example` block for `GOOGLE_*` references
+this doc.
+
+**8. Verifying without Google (offline / first-run)**
+
+A `BYPASS_AUTH=1` env var (dev-only, refused if `NODE_ENV=production`)
+short-circuits `requireAuth` to attach `req.user = { id: cfg.currentUserId,
+email: 'dev@local', isDemo: false }`. Lets a contributor poke at the app
+before they've set up their own Google OAuth client. Logs a `WARN` at
+boot so it's never silently on.
+
+### 5.1 Process layout (production)
 
 ```
 nginx (80/443, public)
@@ -534,6 +669,14 @@ main.tsx
 - [ ] OrdersPage date inputs stack at < 480px.
 - [ ] Tables horizontal-scroll cleanly with right-edge gradient hint.
 
+**Local dev (no nginx)**
+- [ ] Fresh clone + `.env` from `.env.example` + `npm install` + `npm run dev` lands a working app at `http://localhost:5011`.
+- [ ] `/api/auth/me` (proxied) returns 401 before sign-in, 200 after.
+- [ ] Google sign-in completes end-to-end on localhost (using the `:5011` redirect URI registered in Google Cloud Console).
+- [ ] `/socket.io` ticks reach the browser through the Vite proxy.
+- [ ] `BYPASS_AUTH=1` boots into the app without Google credentials and prints a `WARN` at startup.
+- [ ] `BYPASS_AUTH=1` with `NODE_ENV=production` refuses to start.
+
 **Deploy**
 - [ ] `try_files` makes `/demo`, `/app/orders` survive a hard refresh.
 - [ ] Socket.io reconnects after a 60s idle through nginx.
@@ -553,7 +696,19 @@ operation name. Two new log fields:
 
 ### 7.1 Phases
 
-Three PRs. Each independently shippable.
+Four PRs. Each independently shippable.
+
+**Phase 0 — Same-origin plumbing (no behavior change)**
+- Vite dev-server proxy for `/api` + `/socket.io` (§5.0 step 2)
+- `frontend/src/config.ts` `backendUrl: ''` (§5.0 step 1)
+- 1-line drops in `marketClient.ts`, `portfolioClient.ts`, `priceClient.ts`
+- Root `package.json`: `npm run dev` script + `concurrently` devDep
+- `docs/Local_Dev.md` v1 (without the Google parts yet — those land in Phase 1)
+
+After Phase 0: a fresh clone + `npm install` + `npm run dev` opens a
+working app at `http://localhost:5011`. Cross-origin
+`http://localhost:5010` calls are gone. No behavior change for the user;
+this is the foundation Phase 1's auth code stands on.
 
 **Phase 1 — Auth backbone (no UI changes)**
 - `users` + `sessions` tables, schema migration
@@ -622,21 +777,30 @@ deploy/
 ├── nginx.conf.example
 ├── README.md
 └── certbot.md
+
+docs/
+└── Local_Dev.md               clone → .env → Google client → npm run dev
 ```
 
 **Modified:**
 
 ```
-backend/src/server.ts          mount auth routes, swap getUserId, set('trust proxy'), cookieParser
-backend/src/config.ts          load Google + session env vars
+backend/src/server.ts          mount auth routes, swap getUserId, set('trust proxy'), cookieParser, BYPASS_AUTH banner
+backend/src/config.ts          load Google + session env vars, BYPASS_AUTH (dev-only)
 backend/scripts/init-db.sql    append users + sessions tables (consumed by initDb.ts)
 backend/package.json           google-auth-library, cookie-parser
+frontend/src/config.ts         backendUrl: '' (was ports.BACKEND_URL); same-origin
+frontend/src/lib/marketClient.ts       drop ${backendUrl} prefix
+frontend/src/lib/portfolioClient.ts    drop ${backendUrl} prefix
+frontend/src/lib/priceClient.ts        socket.io client uses '/' (same origin)
+frontend/vite.config.ts        add server.proxy for /api and /socket.io
 frontend/src/main.tsx          AuthBoot, LandingPage vs App
 frontend/src/App.tsx           accept user prop
 frontend/src/components/TopBar.tsx     sign-out button, demo CTA, compact summary
 frontend/src/components/Sidebar.tsx    mobile drawer behavior
 frontend/src/index.css         1100→900 breakpoint, touch targets, drawer styles, table scroll
-.env.example                   GOOGLE_*, SESSION_*
+package.json                   add `dev` script + concurrently devDep
+.env.example                   GOOGLE_*, SESSION_*, BYPASS_AUTH (commented)
 ```
 
 **Untouched (intentionally):**
@@ -648,11 +812,12 @@ frontend/src/index.css         1100→900 breakpoint, touch targets, drawer styl
 
 ### 7.3 Estimated size
 
+- Phase 0: ~30 LoC config + ~80 LoC docs (Local_Dev.md).
 - Phase 1: ~400 LoC backend, ~80 LoC frontend.
 - Phase 2: ~600 LoC frontend, ~30 LoC backend.
 - Phase 3: ~250 LoC CSS, ~80 LoC JSX.
 
-Roughly a focused week for one engineer; three reviewable PRs.
+Roughly a focused week for one engineer; four reviewable PRs.
 
 ## 8. Open questions
 
