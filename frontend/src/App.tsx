@@ -47,6 +47,7 @@ export default function App({ user, readOnly }: AppProps) {
   const [activeLotTicker, setActiveLotTicker] = useState<string | null>(null);
   const [tweaksOpen, setTweaksOpen] = useState(false);
   const [tweaks, setTweaks] = useState<Tweaks>(TWEAK_DEFAULTS);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // ---- portfolio <-> market wiring ----------------------------------------
   // usePortfolio needs the live Market so placeOrder can fill at ask/bid and
@@ -140,6 +141,7 @@ export default function App({ user, readOnly }: AppProps) {
         liveFeed={liveFeed}
         user={user}
         readOnly={readOnly}
+        onOpenSidebar={() => setSidebarOpen(true)}
       />
 
       <Sidebar
@@ -149,6 +151,8 @@ export default function App({ user, readOnly }: AppProps) {
         activeAlerts={activeAlerts}
         unreadTriggered={unreadTriggered}
         provider={provider}
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
       />
 
       <main className="main">
