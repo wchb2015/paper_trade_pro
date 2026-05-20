@@ -1918,3 +1918,36 @@ textarea:focus {
   .lot-table { font-size: 11.5px; }
   .lot-footer-summary { flex-direction: column; align-items: flex-start; }
 }
+
+/* ============================================================
+   Trade page — Quick trade / By lot tabs
+   ============================================================ */
+
+.trade-mode-tabs {
+  font-size: 11.5px;
+}
+.trade-mode-tabs button {
+  padding: 4px 10px;
+}
+
+.trade-bylot {
+  display: flex;
+  flex-direction: column;
+}
+.trade-bylot .lot-section {
+  /* Override the drawer's bottom-border so consecutive panels stack neatly
+     inside the card body without an extra full-width line at the bottom. */
+  border-bottom: 1px solid var(--border);
+  padding-left: 0;
+  padding-right: 0;
+}
+.trade-bylot .lot-section:last-child {
+  border-bottom: none;
+}
+
+.trade-bylot-empty {
+  padding: 28px 8px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
