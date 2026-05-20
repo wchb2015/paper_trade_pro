@@ -1,21 +1,18 @@
 // Frontend runtime config. Only two things are configurable at build-time
-// for the UI — the backend URL and a refresh interval. Everything else is
-// derived from defaults so we don't accumulate knobs.
+// for the UI — refresh intervals. The backend URL is empty: every client
+// module builds relative paths ('/api/...') that ride on the Vite dev
+// proxy in development and on the nginx reverse-proxy in production.
 
 const meta = import.meta.env as Record<string, string | undefined>;
 
-const backendUrl = meta['VITE_BACKEND_URL'];
-if (!backendUrl) {
-  const msg =
-    'FATAL: VITE_BACKEND_URL is required. It is injected from ports.cjs ' +
-    'via vite.config.ts `define` — make sure vite.config.ts was loaded.';
-  console.error(msg);
-  throw new Error(msg);
-}
-
 export const config = {
-  /** URL of the paper-trade-pro backend. */
-  backendUrl,
+  /**
+   * Empty string by design. All client modules call `/api/...` directly,
+   * which the dev server (Vite proxy) and prod (nginx) both route to the
+   * Node backend. Same-origin everywhere keeps the cookie + CORS story
+   * identical between dev and prod. See spec §5.0.
+   */
+  backendUrl: '',
   /**
    * How often we poll the backend's /api/quotes as a belt-and-suspenders
    * refresh of bid/ask/dayHigh/etc. (the socket only delivers trade price).
